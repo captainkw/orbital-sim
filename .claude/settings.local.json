@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "WebSearch",
+      "Bash(node:*)",
+      "Bash(npm --version:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gianluca.ai)",
+      "WebFetch(domain:spiff.rit.edu)",
+      "WebFetch(domain:orbital-mechanics.space)",
+      "WebFetch(domain:orbitsimulator.com)",
+      "Bash(npm create:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(curl:*)"
+    ]
+  }
+}
