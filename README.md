@@ -303,17 +303,76 @@ orbital-sim/
 
 ---
 
-## References
+## Scientific References & Sources
 
-1. **Bate, Mueller & White** (1971). *Fundamentals of Astrodynamics*. Dover. -- Keplerian elements, vis-viva, Hohmann transfers.
-2. **Curtis, H. D.** (2014). *Orbital Mechanics for Engineering Students*. -- State vector to elements conversion.
-3. **Vallado, D. A.** (2013). *Fundamentals of Astrodynamics and Applications*. -- ECI coordinates, RK4 propagation.
-4. **Press et al.** (2007). *Numerical Recipes*. -- RK4 method (Section 17.1).
-5. **Hohmann, W.** (1925). *Die Erreichbarkeit der Himmelskörper*. -- Minimum-energy two-impulse transfer.
-6. **IERS Conventions** (2010). Technical Note No. 36. -- GM_Earth value.
-7. **WGS 84** (2000). NIMA TR8350.2. -- Earth mean radius.
-8. **NASA Visible Earth -- Blue Marble**. -- Earth texture (public domain).
-9. **Three.js Documentation**. https://threejs.org/docs/
+### Orbital Mechanics
+
+1. **Bate, R. R., Mueller, D. D., & White, J. E.** (1971). *Fundamentals of Astrodynamics*. Dover Publications.
+   - Core reference for Keplerian orbital elements, the vis-viva equation, and Hohmann transfer orbits.
+   - Used for: state vector to orbital elements conversion, orbit period calculation, transfer orbit delta-V formulas.
+
+2. **Curtis, H. D.** (2014). *Orbital Mechanics for Engineering Students* (3rd ed.). Butterworth-Heinemann.
+   - Detailed derivations of the classical orbital elements from state vectors.
+   - Used for: eccentricity vector computation, argument of periapsis, true anomaly, RAAN from the node vector.
+
+3. **Vallado, D. A.** (2013). *Fundamentals of Astrodynamics and Applications* (4th ed.). Microcosm Press.
+   - Comprehensive astrodynamics reference covering coordinate frames, orbital element conversions, and numerical propagation.
+   - Used for: ECI coordinate system conventions, gravitational acceleration formulas, RK4 integration approach.
+
+### Numerical Methods
+
+4. **Press, W. H., Teukolsky, S. A., Vetterling, W. T., & Flannery, B. P.** (2007). *Numerical Recipes: The Art of Scientific Computing* (3rd ed.). Cambridge University Press.
+   - Standard reference for the 4th-order Runge-Kutta method (Section 17.1).
+   - Used for: RK4 integrator implementation with k1-k4 coefficients and weighted average.
+
+5. **Hairer, E., Norsett, S. P., & Wanner, G.** (1993). *Solving Ordinary Differential Equations I: Nonstiff Problems* (2nd ed.). Springer.
+   - Theoretical foundation for fixed-step explicit Runge-Kutta methods and error analysis.
+   - Used for: understanding the 4th-order accuracy and stability characteristics of the integrator.
+
+### Hohmann Transfer Orbits
+
+6. **Hohmann, W.** (1925). *Die Erreichbarkeit der Himmelskörper* (The Attainability of Heavenly Bodies). Oldenbourg.
+   - Original publication describing the minimum-energy two-impulse transfer between coplanar circular orbits.
+   - Used for: the transfer orbit semi-major axis formula `a_t = (r1 + r2) / 2`, and delta-V calculations at periapsis and apoapsis.
+
+### Gravitational Parameters & Earth Constants
+
+7. **IERS Conventions (2010)**. Petit, G. & Luzum, B. (eds.). IERS Technical Note No. 36.
+   - Source for the geocentric gravitational constant GM_Earth = 3.986004418 x 10^14 m^3/s^2.
+   - URL: https://www.iers.org/IERS/EN/Publications/TechnicalNotes/tn36.html
+
+8. **National Imagery and Mapping Agency (NIMA)** (2000). *Department of Defense World Geodetic System 1984* (WGS 84). Technical Report TR8350.2 (3rd ed.).
+   - Source for Earth's mean radius (6,371 km) and the WGS 84 reference ellipsoid parameters.
+
+9. **IAU 2009 System of Astronomical Constants**. *IAU 2009 Resolution B2*.
+   - Defines the standard gravitational parameter and Earth equatorial radius used in astrodynamics.
+
+### Coordinate Systems
+
+10. **Seidelmann, P. K. (ed.)** (1992). *Explanatory Supplement to the Astronomical Almanac*. University Science Books.
+    - Reference for the Earth-Centered Inertial (ECI) coordinate frame definition and its relationship to celestial reference frames.
+    - Used for: adapting the standard Z-up ECI frame to Three.js Y-up convention (Y = north pole, XZ = equatorial plane).
+
+### Keplerian Elements
+
+11. **Battin, R. H.** (1999). *An Introduction to the Mathematics and Methods of Astrodynamics* (Revised ed.). AIAA Education Series.
+    - Rigorous mathematical treatment of the classical orbital elements and the two-body problem.
+    - Used for: the eccentricity vector formula `e = ((v^2 - mu/r) * r - (r . v) * v) / mu`, specific angular momentum, and edge cases for circular/equatorial orbits.
+
+### Earth Textures
+
+12. **NASA Visible Earth -- Blue Marble: Next Generation**. NASA Earth Observatory.
+    - Source imagery for the Earth daymap texture used in the simulator.
+    - URL: https://visibleearth.nasa.gov/collection/1484/blue-marble
+    - License: Public domain (NASA media are generally not copyrighted).
+
+### Three.js & WebGL
+
+13. **Dirksen, J.** (2018). *Learn Three.js* (3rd ed.). Packt Publishing.
+    - Practical reference for Three.js scene setup, PerspectiveCamera, MeshPhongMaterial, BufferGeometry, and OrbitControls.
+
+14. **Three.js Documentation**. https://threejs.org/docs/
+    - API reference for all Three.js classes used: WebGLRenderer (with logarithmic depth buffer), SphereGeometry, ConeGeometry, LineBasicMaterial, ArrowHelper, TextureLoader, Quaternion, Matrix4.
 
 ---
 
