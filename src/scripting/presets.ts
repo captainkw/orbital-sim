@@ -2,76 +2,122 @@ import { EARTH_RADIUS, GM_EARTH } from '../constants';
 import { ManeuverSequence } from '../types';
 import { hohmannTransfer } from '../physics/maneuver';
 
-const LEO_ALT = 200e3; // 200 km
-const GEO_ALT = 35786e3; // 35,786 km
-
-const r_leo = EARTH_RADIUS + LEO_ALT;
-const r_geo = EARTH_RADIUS + GEO_ALT;
-const v_circular_leo = Math.sqrt(GM_EARTH / r_leo);
-
 /**
- * LEO 200km circular orbit — no maneuvers, just the initial state.
+ * Build a Hohmann transfer preset between two circular orbit altitudes.
+ * Handles both orbit raising (from < to) and lowering (from > to).
  */
-export function leoCircularPreset(): ManeuverSequence {
-  const period = 2 * Math.PI * Math.sqrt(r_leo ** 3 / GM_EARTH);
+export function buildHohmannPreset(name: string, fromAltKm: number, toAltKm: number): ManeuverSequence {
+  const r1 = EARTH_RADIUS + fromAltKm * 1000;
+  const r2 = EARTH_RADIUS + toAltKm * 1000;
+
+  const rInner = Math.min(r1, r2);
+  const rOuter = Math.max(r1, r2);
+  const { dv1, dv2, transferTime } = hohmannTransfer(rInner, rOuter);
+
+  const raising = fromAltKm < toAltKm;
+
+  // Initial circular orbit at fromAltKm
+  const vCircular = Math.sqrt(GM_EARTH / r1);
+
+  const burnStart1 = 300;
+  const burnDuration1 = 60;
+  const burnStart2 = burnStart1 + transferTime;
+  const burnDuration2 = 60;
+  const totalDuration = burnStart2 + burnDuration2 + 7200; // 2hr observation
+
+  let maneuvers;
+  if (raising) {
+    // Prograde: injection burn at periapsis, circularization at apoapsis
+    maneuvers = [
+      {
+        id: 'Transfer Injection',
+        startTime: burnStart1,
+        deltaV: [dv1, 0, 0] as [number, number, number],
+        duration: burnDuration1,
+      },
+      {
+        id: 'Circularization',
+        startTime: burnStart2,
+        deltaV: [dv2, 0, 0] as [number, number, number],
+        duration: burnDuration2,
+      },
+    ];
+  } else {
+    // Retrograde: deorbit burn at apoapsis, circularization at periapsis
+    maneuvers = [
+      {
+        id: 'Deorbit Burn',
+        startTime: burnStart1,
+        deltaV: [-dv2, 0, 0] as [number, number, number],
+        duration: burnDuration1,
+      },
+      {
+        id: 'Circularization',
+        startTime: burnStart2,
+        deltaV: [-dv1, 0, 0] as [number, number, number],
+        duration: burnDuration2,
+      },
+    ];
+  }
+
   return {
     version: 1,
-    name: 'LEO 200km Circular',
+    name,
     initialState: {
-      position: [r_leo, 0, 0],
-      velocity: [0, 0, -v_circular_leo],
+      position: [r1, 0, 0],
+      velocity: [0, 0, -vCircular],
     },
-    maneuvers: [],
-    totalDuration: period * 2, // Two orbits
+    maneuvers,
+    totalDuration,
   };
 }
 
 /**
- * Hohmann transfer from LEO (200km) to GEO.
+ * LEO 200km circular orbit — no maneuvers.
  */
-export function hohmannLeoGeoPreset(): ManeuverSequence {
-  const { dv1, dv2, transferTime } = hohmannTransfer(r_leo, r_geo);
-
-  // Start in LEO circular orbit
-  // First burn at T=300s (give time to observe initial orbit)
-  const burnStart1 = 300;
-  const burnDuration1 = 60; // 60 second burn
-
-  // Second burn at apoapsis (after half-transfer orbit)
-  const burnStart2 = burnStart1 + transferTime;
-  const burnDuration2 = 60;
-
-  const totalDuration = burnStart2 + burnDuration2 + 7200; // Extra 2 hours to observe GEO
-
+export function leoCircularPreset(): ManeuverSequence {
+  const r = EARTH_RADIUS + 200e3;
+  const v = Math.sqrt(GM_EARTH / r);
+  const period = 2 * Math.PI * Math.sqrt(r ** 3 / GM_EARTH);
   return {
     version: 1,
-    name: 'Hohmann LEO → GEO',
+    name: 'LEO 200km Circular',
     initialState: {
-      position: [r_leo, 0, 0],
-      velocity: [0, 0, -v_circular_leo],
+      position: [r, 0, 0],
+      velocity: [0, 0, -v],
     },
-    maneuvers: [
-      {
-        id: 'burn-1-leo-departure',
-        startTime: burnStart1,
-        deltaV: [dv1, 0, 0], // Prograde
-        duration: burnDuration1,
-      },
-      {
-        id: 'burn-2-geo-insertion',
-        startTime: burnStart2,
-        deltaV: [dv2, 0, 0], // Prograde
-        duration: burnDuration2,
-      },
-    ],
-    totalDuration,
+    maneuvers: [],
+    totalDuration: period * 2,
   };
+}
+
+/** Hohmann LEO (200km) → GEO (35786km) */
+export function hohmannLeoGeoPreset(): ManeuverSequence {
+  return buildHohmannPreset('Hohmann LEO → GEO', 200, 35786);
+}
+
+/** Hohmann LEO (200km) → MEO (20200km) */
+export function hohmannLeoMeoPreset(): ManeuverSequence {
+  return buildHohmannPreset('Hohmann LEO → MEO', 200, 20200);
+}
+
+/** Orbit raise 400km → 800km */
+export function orbitRaisePreset(): ManeuverSequence {
+  return buildHohmannPreset('Orbit Raise 400→800km', 400, 800);
+}
+
+/** Orbit lower 800km → 400km */
+export function orbitLowerPreset(): ManeuverSequence {
+  return buildHohmannPreset('Orbit Lower 800→400km', 800, 400);
 }
 
 export function getPreset(name: string): ManeuverSequence | null {
   switch (name) {
     case 'leo-circular': return leoCircularPreset();
     case 'hohmann-leo-geo': return hohmannLeoGeoPreset();
+    case 'hohmann-leo-meo': return hohmannLeoMeoPreset();
+    case 'orbit-raise': return orbitRaisePreset();
+    case 'orbit-lower': return orbitLowerPreset();
     default: return null;
   }
 }

@@ -12,7 +12,7 @@ export const SCALE = 1e-6;
 export const PHYSICS_DT = 1.0;
 
 // Max physics steps per frame (prevents runaway at high warp)
-export const MAX_STEPS_PER_FRAME = 1000;
+export const MAX_STEPS_PER_FRAME = 10000;
 
 // Default spacecraft thrust acceleration (m/s^2) — ~10 m/s^2, like a small thruster
 export const THRUST_ACCEL = 10.0;

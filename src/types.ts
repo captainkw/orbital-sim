@@ -34,6 +34,6 @@ export interface SpacecraftState {
   thrustDirection: [number, number, number]; // ECI thrust vector (m/s^2)
 }
 
-export type WarpLevel = 1 | 5 | 10 | 50 | 100 | 1000;
+export type WarpLevel = number;
 
-export const WARP_LEVELS: WarpLevel[] = [1, 5, 10, 50, 100, 1000];
+export const WARP_LEVELS: WarpLevel[] = [1, 10, 100, 1000, 10000, 100000, 1000000];

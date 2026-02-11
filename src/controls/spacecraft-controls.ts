@@ -3,71 +3,89 @@ import { InputManager } from './input-manager';
 import { ROTATION_RATE, THRUST_ACCEL } from '../constants';
 import { SpacecraftState } from '../types';
 
-const _q = new THREE.Quaternion();
-const _euler = new THREE.Euler();
-
 export class SpacecraftControls {
   private input: InputManager;
+  private pitchOffset = 0;
+  private yawOffset = 0;
 
   constructor(input: InputManager) {
     this.input = input;
   }
 
+  resetOrientation() {
+    this.pitchOffset = 0;
+    this.yawOffset = 0;
+  }
+
   /**
-   * Apply keyboard inputs to spacecraft state.
+   * Apply keyboard inputs to spacecraft state using LVLH frame.
    * @param state Current spacecraft state (mutated in place)
    * @param dt Real delta time for rotation (seconds)
    * @returns Thrust acceleration vector in ECI frame (m/s^2), or [0,0,0]
    */
   update(state: SpacecraftState, dt: number): [number, number, number] {
-    // --- Rotation (Arrow Keys) ---
-    const quat = new THREE.Quaternion(
-      state.quaternion[0],
-      state.quaternion[1],
-      state.quaternion[2],
-      state.quaternion[3]
-    );
+    const [px, py, pz] = state.stateVector.position;
+    const [vx, vy, vz] = state.stateVector.velocity;
 
-    // Pitch: Up/Down arrow around local X
+    // --- Compute LVLH axes in ECI ---
+    // Radial: outward from Earth center
+    const radial = new THREE.Vector3(px, py, pz).normalize();
+
+    // Velocity direction
+    const vel = new THREE.Vector3(vx, vy, vz);
+    const speed = vel.length();
+
+    // Cross-track: radial × velocity (orbit normal direction)
+    const crossTrack = new THREE.Vector3().crossVectors(radial, vel).normalize();
+
+    // Prograde: cross-track × radial (in orbital plane, along velocity for circular)
+    const prograde = new THREE.Vector3().crossVectors(crossTrack, radial).normalize();
+
+    // --- Accumulate pitch/yaw offsets from arrow keys ---
     if (this.input.isDown('ArrowUp')) {
-      _q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), -ROTATION_RATE * dt);
-      quat.multiply(_q);
+      this.pitchOffset += ROTATION_RATE * dt; // Stick forward → pitch down (nose toward Earth)
     }
     if (this.input.isDown('ArrowDown')) {
-      _q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), ROTATION_RATE * dt);
-      quat.multiply(_q);
+      this.pitchOffset -= ROTATION_RATE * dt; // Stick back → pitch up (nose away from Earth)
     }
-
-    // Yaw: Left/Right arrow around local Y
     if (this.input.isDown('ArrowLeft')) {
-      _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), ROTATION_RATE * dt);
-      quat.multiply(_q);
+      this.yawOffset += ROTATION_RATE * dt;
     }
     if (this.input.isDown('ArrowRight')) {
-      _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -ROTATION_RATE * dt);
-      quat.multiply(_q);
+      this.yawOffset -= ROTATION_RATE * dt;
     }
 
-    quat.normalize();
-    state.quaternion = [quat.x, quat.y, quat.z, quat.w];
-
-    // --- Auto-prograde (T key) ---
+    // T key: reset to prograde (zero offsets)
     if (this.input.isDown('KeyT')) {
-      const [vx, vy, vz] = state.stateVector.velocity;
-      const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-      if (speed > 0.01) {
-        // Local -Z is forward; we want -Z to point along velocity
-        const forward = new THREE.Vector3(-vx / speed, -vy / speed, -vz / speed);
-        const up = new THREE.Vector3(0, 1, 0);
-        const mat = new THREE.Matrix4().lookAt(
-          new THREE.Vector3(0, 0, 0),
-          forward,
-          up
-        );
-        quat.setFromRotationMatrix(mat);
-        state.quaternion = [quat.x, quat.y, quat.z, quat.w];
-      }
+      this.pitchOffset = 0;
+      this.yawOffset = 0;
     }
+
+    // --- Build orientation quaternion ---
+    // Base LVLH orientation: spacecraft -Z points prograde, +Y points radially outward
+    // We use lookAt: the spacecraft's forward (-Z) should point along prograde
+    // So we make it look at -prograde (since lookAt convention points +Z at target, we flip)
+    const lookTarget = new THREE.Vector3().copy(prograde).negate();
+    const mat = new THREE.Matrix4().lookAt(
+      new THREE.Vector3(0, 0, 0),
+      lookTarget,
+      radial // "up" is radially outward
+    );
+    const baseQuat = new THREE.Quaternion().setFromRotationMatrix(mat);
+
+    // Apply pitch offset (around local X axis) and yaw offset (around local Y axis)
+    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(1, 0, 0), this.pitchOffset
+    );
+    const yawQuat = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 1, 0), this.yawOffset
+    );
+
+    // Final = base * yaw * pitch
+    const finalQuat = baseQuat.clone().multiply(yawQuat).multiply(pitchQuat);
+    finalQuat.normalize();
+
+    state.quaternion = [finalQuat.x, finalQuat.y, finalQuat.z, finalQuat.w];
 
     // --- Thrust (WASD) ---
     let thrustLocal = new THREE.Vector3(0, 0, 0);
@@ -94,7 +112,7 @@ export class SpacecraftControls {
 
     if (thrusting) {
       // Transform local thrust to ECI frame
-      thrustLocal.applyQuaternion(quat);
+      thrustLocal.applyQuaternion(finalQuat);
       const eciThrust: [number, number, number] = [thrustLocal.x, thrustLocal.y, thrustLocal.z];
       state.thrustDirection = eciThrust;
       return eciThrust;

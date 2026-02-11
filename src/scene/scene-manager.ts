@@ -37,23 +37,10 @@ export class SceneManager {
     this.controls.maxDistance = 500;
     this.controls.listenToKeyEvents = undefined as any; // disable keyboard panning
 
-    // Starfield background
+    // Background
     this.scene.background = new THREE.Color(0x000000);
-    this.addStarfield();
 
     window.addEventListener('resize', this.onResize);
-  }
-
-  private addStarfield() {
-    const starCount = 2000;
-    const positions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i++) {
-      positions[i] = (Math.random() - 0.5) * 2000;
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
-    this.scene.add(new THREE.Points(geometry, material));
   }
 
   private onResize = () => {

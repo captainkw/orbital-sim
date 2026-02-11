@@ -1,4 +1,5 @@
 import { gravitationalAcceleration } from './gravity';
+import { dragAcceleration } from './atmosphere';
 
 // State: [x, y, z, vx, vy, vz]
 type State6 = [number, number, number, number, number, number];
@@ -13,13 +14,14 @@ function derivative(
 ): State6 {
   const [x, y, z, vx, vy, vz] = state;
   const [gx, gy, gz] = gravitationalAcceleration(x, y, z);
+  const [dx, dy, dz] = dragAcceleration(x, y, z, vx, vy, vz);
   return [
     vx,
     vy,
     vz,
-    gx + thrust[0],
-    gy + thrust[1],
-    gz + thrust[2],
+    gx + dx + thrust[0],
+    gy + dy + thrust[1],
+    gz + dz + thrust[2],
   ];
 }
 
