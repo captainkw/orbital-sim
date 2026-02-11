@@ -10,9 +10,16 @@ export class TimeControls {
   }
 
   private warpIndicator: HTMLElement;
+  private warpSlider: HTMLInputElement;
 
   constructor(private input: InputManager) {
     this.warpIndicator = document.getElementById('warp-indicator')!;
+    this.warpSlider = document.getElementById('warp-slider') as HTMLInputElement;
+
+    // Slider → warp index
+    this.warpSlider.addEventListener('input', () => {
+      this.warpIndex = Number(this.warpSlider.value);
+    });
   }
 
   update() {
@@ -31,6 +38,9 @@ export class TimeControls {
         this.warpIndex--;
       }
     }
+
+    // Sync slider to current index (covers keyboard changes)
+    this.warpSlider.value = String(this.warpIndex);
 
     // Update warp indicator
     if (this.warpLevel > 1 || this.paused) {

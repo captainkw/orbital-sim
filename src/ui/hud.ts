@@ -1,5 +1,6 @@
 import { EARTH_RADIUS } from '../constants';
 import { OrbitalElements, SpacecraftState, WarpLevel } from '../types';
+import { dragMagnitude } from '../physics/atmosphere';
 
 export class HUD {
   private el: HTMLElement;
@@ -46,6 +47,7 @@ AoP   ${deg(elements.argumentOfPeriapsis)}°
 TA    ${deg(elements.trueAnomaly)}°
 TIME  ${timeStr}
 WARP  ${warpLevel}x${paused ? ' [PAUSED]' : ''}
-THR   ${state.thrustActive ? 'ACTIVE' : 'OFF'}`;
+THR   ${state.thrustActive ? 'ACTIVE' : 'OFF'}
+DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²`;
   }
 }

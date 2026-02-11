@@ -1,11 +1,11 @@
-import * as THREE from 'three';
-import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE, THRUST_ACCEL } from './constants';
+import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, THRUST_ACCEL } from './constants';
 import { ManeuverSequence, SpacecraftState } from './types';
 import { SceneManager } from './scene/scene-manager';
 import { Earth } from './scene/earth';
 import { SpacecraftMesh } from './scene/spacecraft';
 import { OrbitLine } from './scene/orbit-line';
 import { setupLighting } from './scene/lighting';
+import { CelestialSphere } from './scene/celestial-sphere';
 import { rk4Step } from './physics/integrator';
 import { stateToElements } from './physics/orbital-elements';
 import { predictOrbit } from './physics/trajectory';
@@ -14,8 +14,9 @@ import { SpacecraftControls } from './controls/spacecraft-controls';
 import { HUD } from './ui/hud';
 import { TimeControls } from './ui/time-controls';
 import { Timeline } from './ui/timeline';
+import { CrashOverlay } from './ui/crash-overlay';
 import { ManeuverExecutor } from './scripting/maneuver-executor';
-import { getPreset } from './scripting/presets';
+import { getPreset, buildHohmannPreset } from './scripting/presets';
 import { validateSequence, serializeSequence } from './scripting/maneuver-schema';
 
 export class App {
@@ -23,12 +24,14 @@ export class App {
   private earth: Earth;
   private spacecraftMesh: SpacecraftMesh;
   private orbitLine: OrbitLine;
+  private celestialSphere: CelestialSphere;
   private inputManager: InputManager;
   private spacecraftControls: SpacecraftControls;
   private hud: HUD;
   private timeControls: TimeControls;
   private timeline: Timeline;
   private maneuverExecutor: ManeuverExecutor;
+  private crashOverlay: CrashOverlay;
 
   private state: SpacecraftState;
   private simTime = 0;
@@ -36,6 +39,8 @@ export class App {
   private lastFrameTime = 0;
   private orbitUpdateTimer = 0;
   private currentSequence: ManeuverSequence | null = null;
+  private crashed = false;
+  private lastPresetName = 'leo-circular';
 
   constructor() {
     // Scene
@@ -43,13 +48,16 @@ export class App {
     this.earth = new Earth();
     this.earth.addTo(this.sceneManager.scene);
 
-    setupLighting(this.sceneManager.scene);
+    const sunLight = setupLighting(this.sceneManager.scene);
 
     this.spacecraftMesh = new SpacecraftMesh();
     this.spacecraftMesh.addTo(this.sceneManager.scene);
 
     this.orbitLine = new OrbitLine();
     this.orbitLine.addTo(this.sceneManager.scene);
+
+    // Celestial sphere (stars, sun, moon)
+    this.celestialSphere = new CelestialSphere(this.sceneManager.scene, sunLight);
 
     // Controls
     this.inputManager = new InputManager();
@@ -60,6 +68,14 @@ export class App {
     this.hud = new HUD();
     this.timeline = new Timeline();
     this.maneuverExecutor = new ManeuverExecutor();
+
+    // Crash overlay
+    this.crashOverlay = new CrashOverlay();
+    this.crashOverlay.setRestartCallback(() => {
+      this.crashed = false;
+      const seq = getPreset(this.lastPresetName);
+      if (seq) this.loadSequence(seq);
+    });
 
     // Initial spacecraft state: 200km LEO, equatorial, circular
     const r = EARTH_RADIUS + 200e3;
@@ -74,9 +90,6 @@ export class App {
       thrustDirection: [0, 0, 0],
     };
 
-    // Orient spacecraft to prograde initially
-    this.alignToPrograde();
-
     // Setup UI bindings
     this.setupUIBindings();
 
@@ -84,29 +97,137 @@ export class App {
     this.loadSequence(getPreset('leo-circular')!);
   }
 
-  private alignToPrograde() {
-    const [vx, vy, vz] = this.state.stateVector.velocity;
-    const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
-    if (speed > 0.01) {
-      const forward = new THREE.Vector3(-vx / speed, -vy / speed, -vz / speed);
-      const up = new THREE.Vector3(0, 1, 0);
-      const mat = new THREE.Matrix4().lookAt(
-        new THREE.Vector3(0, 0, 0),
-        forward,
-        up
-      );
-      const q = new THREE.Quaternion().setFromRotationMatrix(mat);
-      this.state.quaternion = [q.x, q.y, q.z, q.w];
-    }
-  }
-
   private setupUIBindings() {
+    const presetSelect = document.getElementById('preset-select') as HTMLSelectElement;
+
+    // Circular slider elements
+    const circularDiv = document.getElementById('slider-circular') as HTMLDivElement;
+    const altSlider = document.getElementById('altitude-slider') as HTMLInputElement;
+    const altInput = document.getElementById('altitude-input') as HTMLInputElement;
+
+    // Transfer slider elements
+    const transferDiv = document.getElementById('slider-transfer') as HTMLDivElement;
+    const fromSlider = document.getElementById('from-slider') as HTMLInputElement;
+    const fromInput = document.getElementById('from-input') as HTMLInputElement;
+    const toSlider = document.getElementById('to-slider') as HTMLInputElement;
+    const toInput = document.getElementById('to-input') as HTMLInputElement;
+
+    const transferPresets = new Set(['hohmann-leo-geo', 'hohmann-leo-meo', 'orbit-raise', 'orbit-lower']);
+
+    const showCircularSliders = (altKm?: number) => {
+      circularDiv.style.display = 'flex';
+      transferDiv.style.display = 'none';
+      if (altKm !== undefined) {
+        const clamped = Math.min(50000, Math.max(100, altKm));
+        altSlider.value = String(clamped);
+        altInput.value = String(clamped);
+      }
+    };
+
+    const showTransferSliders = (fromKm: number, toKm: number) => {
+      circularDiv.style.display = 'none';
+      transferDiv.style.display = 'flex';
+      fromSlider.value = String(fromKm);
+      fromInput.value = String(fromKm);
+      toSlider.value = String(toKm);
+      toInput.value = String(toKm);
+    };
+
+    // Default altitudes for each transfer preset
+    const transferDefaults: Record<string, [number, number]> = {
+      'hohmann-leo-geo': [200, 35786],
+      'hohmann-leo-meo': [200, 20200],
+      'orbit-raise': [400, 800],
+      'orbit-lower': [800, 400],
+    };
+
     // Preset selector
-    document.getElementById('preset-select')!.addEventListener('change', (e) => {
+    presetSelect.addEventListener('change', (e) => {
       const val = (e.target as HTMLSelectElement).value;
       if (!val) return;
+      this.lastPresetName = val;
       const seq = getPreset(val);
-      if (seq) this.loadSequence(seq);
+      if (seq) {
+        this.loadSequence(seq);
+        if (transferPresets.has(val)) {
+          const [from, to] = transferDefaults[val];
+          showTransferSliders(from, to);
+        } else {
+          const r = Math.sqrt(
+            seq.initialState.position[0] ** 2 +
+            seq.initialState.position[1] ** 2 +
+            seq.initialState.position[2] ** 2
+          );
+          const altKm = Math.round((r - EARTH_RADIUS) / 1000);
+          showCircularSliders(altKm);
+        }
+      }
+    });
+
+    // Circular altitude slider / input → create circular orbit
+    const applyAltitude = (altKm: number) => {
+      altKm = Math.max(100, Math.min(50000, altKm));
+      const r = EARTH_RADIUS + altKm * 1000;
+      const v = Math.sqrt(GM_EARTH / r);
+      const period = 2 * Math.PI * Math.sqrt(r ** 3 / GM_EARTH);
+      const seq: ManeuverSequence = {
+        version: 1,
+        name: `Circular ${altKm}km`,
+        initialState: {
+          position: [r, 0, 0],
+          velocity: [0, 0, -v],
+        },
+        maneuvers: [],
+        totalDuration: period * 2,
+      };
+      this.loadSequence(seq);
+      presetSelect.value = '';
+    };
+
+    altSlider.addEventListener('input', () => {
+      altInput.value = altSlider.value;
+      applyAltitude(Number(altSlider.value));
+    });
+
+    altInput.addEventListener('change', () => {
+      const val = Math.max(100, Math.min(50000, Number(altInput.value)));
+      altInput.value = String(val);
+      altSlider.value = String(val);
+      applyAltitude(val);
+    });
+
+    // Transfer slider handlers → rebuild Hohmann preset
+    const applyTransfer = () => {
+      const fromKm = Math.max(100, Math.min(50000, Number(fromInput.value)));
+      const toKm = Math.max(100, Math.min(50000, Number(toInput.value)));
+      if (fromKm === toKm) return;
+      const name = fromKm < toKm
+        ? `Hohmann ${fromKm}→${toKm}km`
+        : `Hohmann ${fromKm}→${toKm}km`;
+      const seq = buildHohmannPreset(name, fromKm, toKm);
+      this.loadSequence(seq);
+      presetSelect.value = '';
+    };
+
+    fromSlider.addEventListener('input', () => {
+      fromInput.value = fromSlider.value;
+      applyTransfer();
+    });
+    fromInput.addEventListener('change', () => {
+      const val = Math.max(100, Math.min(50000, Number(fromInput.value)));
+      fromInput.value = String(val);
+      fromSlider.value = String(val);
+      applyTransfer();
+    });
+    toSlider.addEventListener('input', () => {
+      toInput.value = toSlider.value;
+      applyTransfer();
+    });
+    toInput.addEventListener('change', () => {
+      const val = Math.max(100, Math.min(50000, Number(toInput.value)));
+      toInput.value = String(val);
+      toSlider.value = String(val);
+      applyTransfer();
     });
 
     // Import
@@ -160,8 +281,10 @@ export class App {
     };
     this.simTime = 0;
     this.accumulator = 0;
+    this.crashed = false;
+    this.crashOverlay.hide();
 
-    this.alignToPrograde();
+    this.spacecraftControls.resetOrientation();
     this.maneuverExecutor.loadSequence(seq);
     this.timeline.loadSequence(seq);
   }
@@ -175,13 +298,13 @@ export class App {
     requestAnimationFrame(this.loop);
 
     const now = performance.now() / 1000;
-    const frameDt = Math.min(now - this.lastFrameTime, 0.1); // Cap frame dt
+    const frameDt = Math.min(now - this.lastFrameTime, 0.1);
     this.lastFrameTime = now;
 
     // Time controls
     this.timeControls.update();
 
-    if (!this.timeControls.paused) {
+    if (!this.timeControls.paused && !this.crashed) {
       // Spacecraft keyboard controls (rotation uses frame dt)
       const manualThrust = this.spacecraftControls.update(this.state, frameDt);
 
@@ -217,16 +340,28 @@ export class App {
         this.simTime += PHYSICS_DT;
         this.accumulator -= PHYSICS_DT;
         steps++;
+
+        // Check crash after each physics step
+        const r = Math.sqrt(s.position[0] ** 2 + s.position[1] ** 2 + s.position[2] ** 2);
+        const altitude = r - EARTH_RADIUS;
+        if (this.crashOverlay.checkCrash(altitude)) {
+          this.crashed = true;
+          this.crashOverlay.show();
+          break;
+        }
       }
     }
 
-    // Update orbit prediction periodically (every 30 frames worth of sim time or on thrust change)
+    // Update orbit prediction periodically
     this.orbitUpdateTimer += frameDt;
     if (this.orbitUpdateTimer > 0.5) {
       this.orbitUpdateTimer = 0;
       const predicted = predictOrbit(this.state.stateVector);
       this.orbitLine.updateFromPositions(predicted);
     }
+
+    // Update celestial sphere
+    this.celestialSphere.update(this.simTime);
 
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);

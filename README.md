@@ -1,6 +1,10 @@
 # Orbital Simulator
 
-A browser-based orbital mechanics simulator built with Three.js and TypeScript. Features realistic Keplerian physics, manual spacecraft control, scripted maneuver sequences with a visual timeline, and JSON import/export.
+A browser-based orbital mechanics simulator with realistic physics, Hohmann transfer orbits, atmospheric drag, and crash detection. Fly spacecraft, plan maneuvers, and explore orbital mechanics hands-on.
+
+Built with love by **Kuangwei Hwang**, with an assist from Claude.
+
+---
 
 ## Getting Started
 
@@ -36,32 +40,49 @@ The project includes an `amplify.yml` build spec. Connect the GitHub repo to AWS
 
 ---
 
+## Playing the Simulator
+
+### Circular Orbits
+
+When you first load the simulator, you're placed in a 200 km Low Earth Orbit (LEO). Use the **altitude slider** at the bottom-right to change your orbital altitude from 100 km all the way up to 50,000 km and watch how orbital velocity, period, and the shape of your orbit change in real time.
+
+### Hohmann Transfers
+
+The real fun starts with transfer orbits. Select any transfer preset from the dropdown and the UI switches to **from/to altitude sliders**, letting you dial in custom transfer parameters:
+
+- **Hohmann LEO to GEO** -- The classic transfer from 200 km to geostationary orbit at 35,786 km. Watch the two burns play out on the timeline: a **Transfer Injection** burn to enter the elliptical transfer orbit, then a **Circularization** burn at apoapsis to settle into GEO.
+- **Hohmann LEO to MEO** -- Transfer to Medium Earth Orbit at 20,200 km (GPS satellite altitude).
+- **Orbit Raise 400 to 800 km** -- A short hop between two LEO altitudes. Great for seeing how even small altitude changes require precise burns.
+- **Orbit Lower 800 to 400 km** -- The reverse: a **Deorbit Burn** (retrograde) drops the periapsis, followed by a **Circularization** burn at the lower altitude.
+
+Once a transfer preset is loaded, drag the **From** and **To** sliders to experiment with different altitudes. The maneuver sequence regenerates live -- you can see the burn markers shift on the timeline and watch the delta-V requirements change.
+
+### Crashing (and Trying Again)
+
+If your orbit decays below 70 km altitude, atmospheric drag takes over and the spacecraft is destroyed during reentry. The screen flashes **"YOU CRASHED"** with a 60-second countdown -- click anywhere or wait it out to restart from the last preset. This is especially relevant at low altitudes where drag is non-negligible, or if you accidentally thrust retrograde and lower your periapsis into the atmosphere.
+
+### Time Warp
+
+The warp slider at the top of the screen lets you speed up time across seven levels, from real-time all the way to **1,000,000x**. At maximum warp, a 5-hour Hohmann transfer to GEO completes in seconds. Use the `,` and `.` keys for fine-grained control.
+
+---
+
 ## Controls
 
-### Spacecraft Rotation
+### Spacecraft
 
 | Key | Action |
 |-----|--------|
-| Arrow Up | Pitch down (nose toward planet) |
-| Arrow Down | Pitch up (nose away from planet) |
-| Arrow Left | Yaw left |
-| Arrow Right | Yaw right |
-| T | Auto-align to prograde (velocity direction) |
+| Arrow Up/Down | Pitch (nose toward/away from planet) |
+| Arrow Left/Right | Yaw left/right |
+| W | Thrust forward (prograde) |
+| S | Thrust backward (retrograde) |
+| A / D | Thrust left/right |
+| T | Reset orientation to prograde |
 
-Rotation rate: 1 rad/s. Rotation is applied in the spacecraft's local reference frame.
+Rotation rate: 1 rad/s in the spacecraft's local frame. Thrust acceleration: 10 m/s^2, transformed from local to ECI frame via the spacecraft's quaternion.
 
-### Spacecraft Thrust
-
-| Key | Action |
-|-----|--------|
-| W | Thrust forward (prograde / local -Z) |
-| S | Thrust backward (retrograde / local +Z) |
-| A | Thrust left (local -X) |
-| D | Thrust right (local +X) |
-
-Thrust acceleration: 10 m/s^2. Thrust direction is transformed from the spacecraft's local frame to the ECI (Earth-Centered Inertial) frame using the spacecraft's quaternion orientation.
-
-### Time Controls
+### Time
 
 | Key | Action |
 |-----|--------|
@@ -69,11 +90,9 @@ Thrust acceleration: 10 m/s^2. Thrust direction is transformed from the spacecra
 | . (Period) | Increase time warp |
 | , (Comma) | Decrease time warp |
 
-Warp levels: 1x, 5x, 10x, 50x, 100x, 1000x.
+Warp levels: 1x, 10x, 100x, 1,000x, 10,000x, 100,000x, 1,000,000x. Also controllable via the slider at the top of the screen.
 
 ### Camera
-
-Camera is controlled exclusively with the mouse via Three.js OrbitControls:
 
 | Input | Action |
 |-------|--------|
@@ -81,34 +100,88 @@ Camera is controlled exclusively with the mouse via Three.js OrbitControls:
 | Scroll wheel | Zoom in/out |
 | Right click + drag | Pan |
 
-Default view is top-down from the north pole. Camera distance is clamped between 2 and 500 Three.js units (2,000 km to 500,000 km).
-
-### Maneuver Presets & Import/Export
+### Presets & Import/Export
 
 | Control | Action |
 |---------|--------|
-| Preset dropdown | Select a pre-built maneuver sequence |
-| Import JSON | Load a maneuver sequence from a JSON file |
-| Export JSON | Save the current maneuver sequence as a JSON file |
+| Preset dropdown | Select a pre-built orbit or transfer |
+| Altitude slider | Adjust circular orbit altitude (100--50,000 km) |
+| From/To sliders | Adjust transfer orbit departure and arrival altitudes |
+| Import JSON | Load a maneuver sequence from file |
+| Export JSON | Save the current sequence to file |
 
-Available presets:
-- **LEO 200km Circular** -- Spacecraft in a 200 km low Earth orbit with no maneuvers (2 orbital periods).
-- **Hohmann LEO to GEO** -- Two-burn Hohmann transfer from 200 km LEO to geostationary orbit (35,786 km). First burn at T+300s (~2,428 m/s prograde), second burn at apoapsis (~1,467 m/s prograde), ~5.3 hour transfer.
+---
+
+## Physics
+
+### Gravity
+
+The simulator uses Newtonian point-mass gravity:
+
+```
+a = -GM_Earth * r / |r|^3
+```
+
+This produces accurate Keplerian orbits -- ellipses, parabolas, and hyperbolas all emerge naturally from the same force law. The gravitational parameter `GM_Earth = 3.986004418 x 10^14 m^3/s^2` comes from the IERS conventions, matching the value used in real mission planning software.
+
+### Atmospheric Drag
+
+Below 600 km altitude, the spacecraft experiences aerodynamic drag using an exponential atmosphere model:
+
+```
+F_drag = 0.5 * rho * Cd * A * v^2
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Sea-level density (rho_0) | 1.225 kg/m^3 |
+| Scale height | 8,500 m |
+| Drag coefficient (Cd) | 2.2 |
+| Cross-section area | 10 m^2 |
+| Spacecraft mass | 1,000 kg |
+
+Density falls off exponentially with altitude: `rho = rho_0 * exp(-h / H)`. The drag force always opposes the velocity vector. At typical LEO altitudes (200--400 km), drag is small but nonzero -- over many orbits it causes gradual orbital decay. Below 70 km, drag becomes catastrophic and triggers the crash screen.
+
+### Integrator
+
+All physics are advanced with a **4th-order Runge-Kutta (RK4)** integrator at a fixed 1-second timestep. At each step, gravity, drag, and any active thrust are summed into a net acceleration and propagated through the standard k1--k4 stages. The fixed timestep ensures deterministic, reproducible results regardless of frame rate.
+
+At high warp levels, the engine runs up to 10,000 physics steps per frame to keep up with the accelerated clock.
+
+### Hohmann Transfers
+
+Transfer orbit burns are computed analytically using the classical Hohmann transfer formulas:
+
+- Transfer semi-major axis: `a_t = (r1 + r2) / 2`
+- Delta-V at departure: `dv1 = sqrt(mu * (2/r1 - 1/a_t)) - sqrt(mu / r1)`
+- Delta-V at arrival: `dv2 = sqrt(mu / r2) - sqrt(mu * (2/r2 - 1/a_t))`
+- Transfer time: `t = pi * sqrt(a_t^3 / mu)`
+
+For orbit lowering, the burns are applied in reverse as retrograde impulses. Burns are modeled as constant-thrust over 60 seconds rather than instantaneous impulses, which is more representative of real spacecraft propulsion.
+
+### Physical Constants
+
+| Constant | Value | Source |
+|----------|-------|--------|
+| GM_Earth | 3.986004418 x 10^14 m^3/s^2 | IERS / IAU |
+| Earth mean radius | 6.371 x 10^6 m | WGS 84 |
+| Circular orbit velocity (200 km) | ~7,784 m/s | Derived: sqrt(GM/r) |
+| GEO altitude | 35,786 km | Standard |
 
 ---
 
 ## HUD Display
 
-The heads-up display (top-left, green monospace) shows real-time telemetry:
+The heads-up display (top-left) shows real-time telemetry:
 
 | Field | Description |
 |-------|-------------|
 | ALT | Altitude above Earth's surface (km) |
-| VEL | Orbital velocity magnitude (m/s) |
+| VEL | Orbital velocity (m/s) |
 | APO | Apoapsis altitude (km) |
 | PER | Periapsis altitude (km) |
 | SMA | Semi-major axis (km) |
-| ECC | Eccentricity (dimensionless) |
+| ECC | Eccentricity |
 | INC | Inclination (degrees) |
 | RAAN | Right Ascension of Ascending Node (degrees) |
 | AoP | Argument of Periapsis (degrees) |
@@ -121,7 +194,7 @@ The heads-up display (top-left, green monospace) shows real-time telemetry:
 
 ## Maneuver Sequence JSON Schema
 
-Maneuver sequences can be imported/exported as JSON files:
+Maneuver sequences can be imported/exported as JSON:
 
 ```json
 {
@@ -133,7 +206,7 @@ Maneuver sequences can be imported/exported as JSON files:
   },
   "maneuvers": [
     {
-      "id": "burn-1",
+      "id": "Transfer Injection",
       "startTime": 300,
       "deltaV": [2428, 0, 0],
       "duration": 60
@@ -147,9 +220,9 @@ Maneuver sequences can be imported/exported as JSON files:
 |-------|------|-------------|
 | `version` | number | Schema version (currently 1) |
 | `name` | string | Human-readable sequence name |
-| `initialState.position` | [x, y, z] | Initial position in meters (ECI, Y-up) |
-| `initialState.velocity` | [vx, vy, vz] | Initial velocity in m/s (ECI, Y-up) |
-| `maneuvers[].id` | string | Unique burn identifier |
+| `initialState.position` | [x, y, z] | Position in meters (ECI, Y-up) |
+| `initialState.velocity` | [vx, vy, vz] | Velocity in m/s (ECI, Y-up) |
+| `maneuvers[].id` | string | Burn label (shown on timeline) |
 | `maneuvers[].startTime` | number | Sim time to begin burn (seconds) |
 | `maneuvers[].deltaV` | [prograde, normal, radial] | Delta-V components in m/s |
 | `maneuvers[].duration` | number | Burn duration in seconds |
@@ -161,79 +234,62 @@ During scripted burns, the spacecraft auto-aligns to prograde and thrust is appl
 
 ## Architecture
 
+### Coordinate System
+
+- **ECI (Earth-Centered Inertial) with Y-up** (Three.js convention)
+- Y axis = north pole, XZ plane = equatorial plane
+- Initial position on the equator at `(R_earth + altitude, 0, 0)`
+- Initial velocity `(0, 0, -v_circular)` for prograde motion
+
+### Scale
+
+- **Internal physics**: SI units (meters, seconds, m/s)
+- **Rendering**: 1 Three.js unit = 1,000 km (`SCALE = 1e-6`)
+
 ### Project Structure
 
 ```
 orbital-sim/
-├── index.html               # App shell with HUD, timeline, controls overlay
+├── index.html               # App shell, HUD, timeline, controls overlay
 ├── src/
 │   ├── main.ts              # Entry point
-│   ├── app.ts               # Game loop orchestrator, fixed-timestep accumulator
-│   ├── constants.ts         # Physical constants, scale factor, physics params
+│   ├── app.ts               # Game loop, fixed-timestep accumulator
+│   ├── constants.ts         # Physical constants, scale factor
 │   ├── types.ts             # StateVector, OrbitalElements, ManeuverNode, etc.
 │   ├── physics/
-│   │   ├── gravity.ts       # Newtonian gravity: a = -GM * r / |r|^3
-│   │   ├── integrator.ts    # 4th-order Runge-Kutta integrator
-│   │   ├── orbital-elements.ts  # State vector to Keplerian elements (Y-up)
-│   │   ├── trajectory.ts    # Orbit prediction (propagate without thrust)
+│   │   ├── gravity.ts       # Newtonian gravity acceleration
+│   │   ├── atmosphere.ts    # Exponential drag model
+│   │   ├── integrator.ts    # RK4 integrator (gravity + drag + thrust)
+│   │   ├── orbital-elements.ts  # State vector → Keplerian elements
+│   │   ├── trajectory.ts    # Orbit prediction propagator
 │   │   └── maneuver.ts      # Hohmann transfer calculator
 │   ├── scene/
-│   │   ├── scene-manager.ts # Renderer, camera, OrbitControls, starfield
-│   │   ├── earth.ts         # Textured sphere at origin
-│   │   ├── spacecraft.ts    # Cone mesh, quaternion orientation, thrust arrow
-│   │   ├── orbit-line.ts    # Dynamic BufferGeometry line for orbit prediction
+│   │   ├── scene-manager.ts # Renderer, camera, OrbitControls
+│   │   ├── earth.ts         # Textured sphere
+│   │   ├── spacecraft.ts    # Cone mesh, orientation, thrust arrow
+│   │   ├── orbit-line.ts    # Predicted orbit line
+│   │   ├── celestial-sphere.ts  # Stars, sun, moon
 │   │   └── lighting.ts      # Directional sunlight + ambient
 │   ├── controls/
-│   │   ├── input-manager.ts # Keyboard state map with preventDefault
-│   │   ├── camera-controls.ts  # OrbitControls wrapper (mouse only)
-│   │   └── spacecraft-controls.ts  # Keyboard rotation + thrust
+│   │   ├── input-manager.ts # Keyboard state map
+│   │   ├── camera-controls.ts  # OrbitControls wrapper
+│   │   └── spacecraft-controls.ts  # Rotation + thrust
 │   ├── ui/
 │   │   ├── hud.ts           # Telemetry overlay
-│   │   ├── timeline.ts      # Visual maneuver timeline bar
-│   │   ├── time-controls.ts # Pause/play, warp level control
-│   │   └── orbital-display.ts  # (placeholder for future expansion)
+│   │   ├── timeline.ts      # Visual timeline with burn labels
+│   │   ├── time-controls.ts # Pause/play, warp slider
+│   │   └── crash-overlay.ts # Crash detection and restart
 │   └── scripting/
 │       ├── maneuver-schema.ts    # JSON validation and serialization
 │       ├── maneuver-executor.ts  # Fires burns at scheduled sim times
-│       └── presets.ts            # Pre-built maneuver sequences
+│       └── presets.ts            # Preset builder + pre-built sequences
 ├── public/textures/
-│   └── earth_daymap.jpg     # NASA Blue Marble Earth texture
+│   └── earth_daymap.jpg     # NASA Blue Marble texture
 ├── amplify.yml              # AWS Amplify build spec
 ├── vite.config.ts
 ├── tsconfig.json
 └── package.json
 ```
-
-### Coordinate System
-
-- **ECI (Earth-Centered Inertial) with Y-up** (Three.js convention)
-- **Y axis** = north pole
-- **XZ plane** = equatorial plane
-- Launch/initial position at `(EARTH_RADIUS + 200km, 0, 0)` on the equator
-- Initial velocity `(0, 0, -v_circular)` for a prograde circular orbit
-
-### Scale
-
-- **Internal physics**: SI units (meters, seconds, m/s)
-- **Rendering**: 1 Three.js unit = 1,000 km (scale factor `SCALE = 1e-6`)
-- Earth radius renders as ~6.371 units, keeping coordinates in float32-friendly range
-
-### Physics Engine
-
-- **Gravity**: Point-mass Newtonian gravity, `a = -GM_Earth * r / |r|^3`
-- **Integrator**: Classical 4th-order Runge-Kutta (RK4), fixed 1-second timestep
-- **State vector**: 6 elements `[x, y, z, vx, vy, vz]` in SI units
-- **Game loop**: Fixed-timestep accumulator with max 1000 steps/frame to prevent spiral-of-death at high warp
-- **Orbit prediction**: Propagates the current state forward ~1.1 orbital periods with no thrust, auto-tunes step size from the vis-viva derived period
-
-### Physical Constants
-
-| Constant | Value | Source |
-|----------|-------|--------|
-| GM_Earth (standard gravitational parameter) | 3.986004418 x 10^14 m^3/s^2 | IERS / IAU |
-| Earth mean radius | 6.371 x 10^6 m | WGS 84 mean |
-| Circular orbit velocity (200 km) | ~7,784 m/s | Derived: sqrt(GM/r) |
-| GEO altitude | 35,786 km | Standard |
 
 ---
 

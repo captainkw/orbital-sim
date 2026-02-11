@@ -26,7 +26,16 @@ export class Timeline {
       const widthPct = Math.max((m.duration / this.totalDuration) * 100, 0.5);
       block.style.left = `${startPct}%`;
       block.style.width = `${widthPct}%`;
-      block.title = `${m.id}: dV=[${m.deltaV.map(v => v.toFixed(1)).join(', ')}] m/s @ T+${m.startTime}s`;
+
+      const dvMag = Math.sqrt(m.deltaV[0] ** 2 + m.deltaV[1] ** 2 + m.deltaV[2] ** 2);
+      block.title = `${m.id}: ΔV=${dvMag.toFixed(1)} m/s @ T+${m.startTime}s`;
+
+      // Label above the block
+      const label = document.createElement('div');
+      label.className = 'maneuver-label';
+      label.textContent = m.id;
+      block.appendChild(label);
+
       this.bar.appendChild(block);
     }
   }
