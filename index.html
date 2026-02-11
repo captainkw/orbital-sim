@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbital Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    canvas { display: block; }
+
+    #hud {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #00ff88;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      pointer-events: none;
+      text-shadow: 0 0 4px rgba(0, 255, 136, 0.5);
+      white-space: pre;
+    }
+
+    #controls-help {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: #888;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.6;
+      pointer-events: none;
+      white-space: pre;
+    }
+
+    #timeline-container {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background: rgba(0, 0, 0, 0.7);
+      border-top: 1px solid #333;
+    }
+
+    #timeline-bar {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    #timeline-playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ff4444;
+      z-index: 10;
+    }
+
+    .maneuver-block {
+      position: absolute;
+      top: 10px;
+      bottom: 10px;
+      background: rgba(255, 165, 0, 0.7);
+      border: 1px solid #ffa500;
+      border-radius: 3px;
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    #import-export {
+      position: absolute;
+      bottom: 55px;
+      right: 10px;
+      display: flex;
+      gap: 5px;
+    }
+
+    #import-export button, #import-export select {
+      background: rgba(0, 0, 0, 0.7);
+      color: #00ff88;
+      border: 1px solid #00ff88;
+      padding: 4px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    #import-export button:hover, #import-export select:hover {
+      background: rgba(0, 255, 136, 0.15);
+    }
+
+    #warp-indicator {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #ffaa00;
+      font-family: 'Courier New', monospace;
+      font-size: 16px;
+      font-weight: bold;
+      pointer-events: none;
+      text-shadow: 0 0 6px rgba(255, 170, 0, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="hud"></div>
+  <div id="controls-help">
+Arrow Keys .... Pitch/Yaw
+W/S .......... Thrust Fwd/Back
+A/D .......... Thrust Left/Right
+T ............ Auto-Prograde
+Space ........ Pause/Play
+, / . ........ Warp -/+</div>
+  <div id="warp-indicator"></div>
+  <div id="import-export">
+    <select id="preset-select">
+      <option value="">-- Presets --</option>
+      <option value="leo-circular">LEO 200km Circular</option>
+      <option value="hohmann-leo-geo">Hohmann LEO → GEO</option>
+    </select>
+    <button id="btn-import">Import JSON</button>
+    <button id="btn-export">Export JSON</button>
+  </div>
+  <div id="timeline-container">
+    <div id="timeline-bar">
+      <div id="timeline-playhead"></div>
+    </div>
+  </div>
+  <input type="file" id="file-input" accept=".json" style="display:none" />
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
