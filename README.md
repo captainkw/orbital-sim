@@ -297,9 +297,10 @@ orbital-sim/
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| [Three.js](https://threejs.org/) | ^0.182.0 | 3D rendering, WebGL, OrbitControls |
-| [TypeScript](https://www.typescriptlang.org/) | ^5.9.3 | Static typing (strict mode, ES2022) |
-| [Vite](https://vite.dev/) | ^7.3.1 | Build tool and dev server |
+| [Three.js](https://threejs.org/) | ^0.182.0 | 3D rendering engine -- WebGL renderer, PerspectiveCamera, SphereGeometry, MeshPhongMaterial, BufferGeometry, Line, ArrowHelper, OrbitControls, TextureLoader, logarithmic depth buffer |
+| [@types/three](https://www.npmjs.com/package/@types/three) | ^0.182.0 | TypeScript type definitions for Three.js |
+| [TypeScript](https://www.typescriptlang.org/) | ^5.9.3 | Static type checking (ES2022 target, strict mode, bundler module resolution) |
+| [Vite](https://vite.dev/) | ^7.3.1 | Build tool and dev server -- HMR, ES module bundling, Rollup-based production builds |
 
 ---
 
