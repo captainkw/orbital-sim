@@ -91,8 +91,8 @@ export class App {
       if (seq) this.loadSequence(seq);
     });
 
-    // Initial spacecraft state: 200km LEO, equatorial, circular
-    const r = EARTH_RADIUS + 200e3;
+    // Initial spacecraft state: 600km LEO, equatorial, circular
+    const r = EARTH_RADIUS + 600e3;
     const vCircular = Math.sqrt(GM_EARTH / r);
     this.state = {
       stateVector: {
@@ -415,7 +415,7 @@ export class App {
     }
 
     // Update celestial sphere
-    this.celestialSphere.update(this.simTime);
+    this.celestialSphere.update(this.simTime, 172);
 
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);

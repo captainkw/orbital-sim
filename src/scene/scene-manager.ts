@@ -25,7 +25,7 @@ export class SceneManager {
       0.01,
       10000
     );
-    this.camera.position.set(0, 50, 0);
+    this.camera.position.set(0, 20, 0);
     this.camera.up.set(0, 0, -1); // So "up" in view aligns with -Z (toward launch point)
     this.camera.lookAt(0, 0, 0);
 
