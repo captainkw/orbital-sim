@@ -11,7 +11,7 @@ export class Earth {
     const loader = new THREE.TextureLoader();
 
     const material = new THREE.MeshPhongMaterial({
-      map: loader.load('/textures/earth_daymap.jpg'),
+      map: loader.load(`${import.meta.env.BASE_URL}textures/earth_daymap.jpg`),
       specular: new THREE.Color(0x333333),
       shininess: 15,
     });
