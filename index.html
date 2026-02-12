@@ -133,6 +133,17 @@
     }
     @media (hover: none) and (pointer: coarse) {
       #controls-help { display: none; }
+      #import-export {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        bottom: auto;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+      #import-export #btn-import,
+      #import-export #btn-export { display: none; }
     }
   </style>
 </head>
