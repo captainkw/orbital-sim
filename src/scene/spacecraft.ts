@@ -29,7 +29,7 @@ export class SpacecraftMesh {
       const maxDim = Math.max(size.x, size.y, size.z);
 
       // Scale so the shuttle is ~1.8 Three.js units long (slightly oversized)
-      const desiredSize = 1.8;
+      const desiredSize = 1.2;
       const scaleFactor = desiredSize / maxDim;
 
       const mat = new THREE.MeshPhongMaterial({
@@ -43,10 +43,13 @@ export class SpacecraftMesh {
       mesh.scale.setScalar(scaleFactor);
 
       // Orient so the nose points along -Z (local forward)
-      // STL models vary in orientation; we'll rotate to match.
-      // The shuttle STL likely has nose along +X or +Z — adjust after inspection.
-      // Default: rotate so longest axis aligns with -Z
-      mesh.rotation.y = Math.PI; // nose forward along -Z
+      // Pitch down 90° (nose down), then roll left 90°
+      mesh.rotation.order = 'YXZ';
+      mesh.rotation.x = -Math.PI / 2; // pitch down 90°
+      mesh.rotation.z = -Math.PI / 2; // roll left 90°
+
+      // Offset upward so the shuttle sits above the orbit path
+      mesh.position.y = 0.175;
 
       this.shuttleGroup.add(mesh);
     });
