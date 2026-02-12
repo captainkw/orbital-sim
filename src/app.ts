@@ -1,5 +1,16 @@
 import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, THRUST_ACCEL } from './constants';
-import { ManeuverSequence, SpacecraftState } from './types';
+import { ManeuverSequence, SpacecraftState, StateVector } from './types';
+
+function applyInclination(state: StateVector, incDeg: number): StateVector {
+  const inc = incDeg * Math.PI / 180;
+  const cosI = Math.cos(inc), sinI = Math.sin(inc);
+  const [px, py, pz] = state.position;
+  const [vx, vy, vz] = state.velocity;
+  return {
+    position: [px, py * cosI - pz * sinI, py * sinI + pz * cosI],
+    velocity: [vx, vy * cosI - vz * sinI, vy * sinI + vz * cosI],
+  };
+}
 import { SceneManager } from './scene/scene-manager';
 import { Earth } from './scene/earth';
 import { SpacecraftMesh } from './scene/spacecraft';
@@ -112,6 +123,12 @@ export class App {
     const toSlider = document.getElementById('to-slider') as HTMLInputElement;
     const toInput = document.getElementById('to-input') as HTMLInputElement;
 
+    // Inclination slider elements
+    const incSlider = document.getElementById('inc-slider') as HTMLInputElement;
+    const incInput = document.getElementById('inc-input') as HTMLInputElement;
+
+    const getInclination = () => Number(incInput.value);
+
     const transferPresets = new Set(['hohmann-leo-geo', 'hohmann-leo-meo', 'orbit-raise', 'orbit-lower']);
 
     const showCircularSliders = (altKm?: number) => {
@@ -148,6 +165,7 @@ export class App {
       this.lastPresetName = val;
       const seq = getPreset(val);
       if (seq) {
+        seq.initialState = applyInclination(seq.initialState, getInclination());
         this.loadSequence(seq);
         if (transferPresets.has(val)) {
           const [from, to] = transferDefaults[val];
@@ -173,10 +191,10 @@ export class App {
       const seq: ManeuverSequence = {
         version: 1,
         name: `Circular ${altKm}km`,
-        initialState: {
+        initialState: applyInclination({
           position: [r, 0, 0],
           velocity: [0, 0, -v],
-        },
+        }, getInclination()),
         maneuvers: [],
         totalDuration: period * 2,
       };
@@ -205,6 +223,7 @@ export class App {
         ? `Hohmann ${fromKm}→${toKm}km`
         : `Hohmann ${fromKm}→${toKm}km`;
       const seq = buildHohmannPreset(name, fromKm, toKm);
+      seq.initialState = applyInclination(seq.initialState, getInclination());
       this.loadSequence(seq);
       presetSelect.value = '';
     };
@@ -228,6 +247,26 @@ export class App {
       toInput.value = String(val);
       toSlider.value = String(val);
       applyTransfer();
+    });
+
+    // Inclination slider/input → re-apply current orbit with new inclination
+    const reapplyWithInclination = () => {
+      if (transferDiv.style.display !== 'none') {
+        applyTransfer();
+      } else {
+        applyAltitude(Number(altInput.value));
+      }
+    };
+
+    incSlider.addEventListener('input', () => {
+      incInput.value = incSlider.value;
+      reapplyWithInclination();
+    });
+    incInput.addEventListener('change', () => {
+      const val = Math.max(0, Math.min(90, Number(incInput.value)));
+      incInput.value = String(val);
+      incSlider.value = String(val);
+      reapplyWithInclination();
     });
 
     // Import

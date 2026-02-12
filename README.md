@@ -106,6 +106,7 @@ Warp levels: 1x, 10x, 100x, 1,000x, 10,000x, 100,000x, 1,000,000x. Also controll
 |---------|--------|
 | Preset dropdown | Select a pre-built orbit or transfer |
 | Altitude slider | Adjust circular orbit altitude (100--50,000 km) |
+| Inclination slider | Tilt the orbit plane (0°--90°) |
 | From/To sliders | Adjust transfer orbit departure and arrival altitudes |
 | Import JSON | Load a maneuver sequence from file |
 | Export JSON | Save the current sequence to file |
@@ -266,7 +267,7 @@ orbital-sim/
 │   ├── scene/
 │   │   ├── scene-manager.ts # Renderer, camera, OrbitControls
 │   │   ├── earth.ts         # Textured sphere
-│   │   ├── spacecraft.ts    # Cone mesh, orientation, thrust arrow
+│   │   ├── spacecraft.ts    # Shuttle model, orientation, thrust arrow
 │   │   ├── orbit-line.ts    # Predicted orbit line
 │   │   ├── celestial-sphere.ts  # Stars, sun, moon
 │   │   └── lighting.ts      # Directional sunlight + ambient

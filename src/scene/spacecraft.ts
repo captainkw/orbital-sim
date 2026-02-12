@@ -1,21 +1,55 @@
 import * as THREE from 'three';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { SCALE } from '../constants';
 import { SpacecraftState } from '../types';
 
 export class SpacecraftMesh {
   readonly group: THREE.Group;
-  private coneMesh: THREE.Mesh;
+  private shuttleGroup: THREE.Group;
   readonly thrustArrow: THREE.ArrowHelper;
 
   constructor() {
     this.group = new THREE.Group();
+    this.shuttleGroup = new THREE.Group();
+    this.group.add(this.shuttleGroup);
 
-    // Cone pointing along -Z (local forward/prograde)
-    const coneGeo = new THREE.ConeGeometry(0.15, 0.5, 8);
-    coneGeo.rotateX(Math.PI / 2); // Point cone along -Z
-    const coneMat = new THREE.MeshPhongMaterial({ color: 0xcccccc, emissive: 0x222222 });
-    this.coneMesh = new THREE.Mesh(coneGeo, coneMat);
-    this.group.add(this.coneMesh);
+    // Load the STL shuttle model
+    const loader = new STLLoader();
+    loader.load(`${import.meta.env.BASE_URL}models/shuttle.stl`, (geometry) => {
+      // Center the geometry on its bounding box
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox!;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      geometry.translate(-center.x, -center.y, -center.z);
+
+      // Compute size to normalize scale
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+
+      // Scale so the shuttle is ~1.8 Three.js units long (slightly oversized)
+      const desiredSize = 1.8;
+      const scaleFactor = desiredSize / maxDim;
+
+      const mat = new THREE.MeshPhongMaterial({
+        color: 0xeeeeee,
+        emissive: 0x111111,
+        shininess: 30,
+        flatShading: true,
+      });
+
+      const mesh = new THREE.Mesh(geometry, mat);
+      mesh.scale.setScalar(scaleFactor);
+
+      // Orient so the nose points along -Z (local forward)
+      // STL models vary in orientation; we'll rotate to match.
+      // The shuttle STL likely has nose along +X or +Z — adjust after inspection.
+      // Default: rotate so longest axis aligns with -Z
+      mesh.rotation.y = Math.PI; // nose forward along -Z
+
+      this.shuttleGroup.add(mesh);
+    });
 
     // Axes helper for dev
     this.group.add(new THREE.AxesHelper(0.5));
