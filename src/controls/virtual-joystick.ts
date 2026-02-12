@@ -8,6 +8,7 @@ export interface JoystickKeyMapping {
 }
 
 export class VirtualJoystick {
+  private wrapper: HTMLDivElement;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private inputManager: InputManager;
@@ -22,24 +23,44 @@ export class VirtualJoystick {
   private knobY = 0;
   private activeTouch: number | null = null;
 
-  constructor(inputManager: InputManager, side: 'left' | 'right', keys: JoystickKeyMapping) {
+  constructor(inputManager: InputManager, side: 'left' | 'right', keys: JoystickKeyMapping, label?: string) {
     this.inputManager = inputManager;
     this.keys = keys;
+
+    this.wrapper = document.createElement('div');
+    this.wrapper.style.cssText = `
+      position: absolute;
+      bottom: 60px;
+      ${side}: 10px;
+      z-index: 1000;
+      pointer-events: none;
+      text-align: center;
+    `;
+
+    if (label) {
+      const labelEl = document.createElement('div');
+      labelEl.textContent = label;
+      labelEl.style.cssText = `
+        color: rgba(0, 255, 136, 0.5);
+        font-family: 'Courier New', monospace;
+        font-size: 10px;
+        margin-bottom: 4px;
+        pointer-events: none;
+      `;
+      this.wrapper.appendChild(labelEl);
+    }
 
     this.canvas = document.createElement('canvas');
     this.canvas.width = this.size;
     this.canvas.height = this.size;
     this.canvas.style.cssText = `
-      position: absolute;
-      bottom: 60px;
-      ${side}: 10px;
       width: ${this.size}px;
       height: ${this.size}px;
       touch-action: none;
-      z-index: 1000;
       pointer-events: auto;
     `;
 
+    this.wrapper.appendChild(this.canvas);
     this.ctx = this.canvas.getContext('2d')!;
 
     this.canvas.addEventListener('touchstart', this.onTouchStart, { passive: false });
@@ -50,8 +71,8 @@ export class VirtualJoystick {
     this.draw();
   }
 
-  get element(): HTMLCanvasElement {
-    return this.canvas;
+  get element(): HTMLElement {
+    return this.wrapper;
   }
 
   private onTouchStart = (e: TouchEvent) => {
@@ -158,7 +179,7 @@ export class VirtualJoystick {
     this.canvas.removeEventListener('touchmove', this.onTouchMove);
     this.canvas.removeEventListener('touchend', this.onTouchEnd);
     this.canvas.removeEventListener('touchcancel', this.onTouchEnd);
-    this.canvas.remove();
+    this.wrapper.remove();
     this.clearKeys();
   }
 }

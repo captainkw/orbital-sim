@@ -17,7 +17,7 @@ export class MobileControls {
       down: 'KeyS',
       left: 'KeyA',
       right: 'KeyD',
-    });
+    }, 'Manual Thrust Control');
 
     // Right joystick: arrow key rotation
     this.rightJoystick = new VirtualJoystick(inputManager, 'right', {
@@ -25,7 +25,7 @@ export class MobileControls {
       down: 'ArrowDown',
       left: 'ArrowLeft',
       right: 'ArrowRight',
-    });
+    }, 'Manual Pitch / Yaw');
 
     document.body.appendChild(this.leftJoystick.element);
     document.body.appendChild(this.rightJoystick.element);
