@@ -37,6 +37,14 @@ export class SceneManager {
     this.controls.maxDistance = 500;
     this.controls.listenToKeyEvents = undefined as any; // disable keyboard panning
 
+    // Mobile: 2-finger dolly+pan
+    if ('ontouchstart' in window) {
+      this.controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN,
+      };
+    }
+
     // Background
     this.scene.background = new THREE.Color(0x000000);
 
