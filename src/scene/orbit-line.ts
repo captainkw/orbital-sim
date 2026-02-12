@@ -17,9 +17,12 @@ export class OrbitLine {
       color,
       transparent: true,
       opacity: 0.6,
+      depthTest: false,
     });
 
     this.line = new THREE.Line(this.geometry, material);
+    this.line.renderOrder = 1;
+    this.line.frustumCulled = false;
   }
 
   updateFromPositions(positions: [number, number, number][]) {

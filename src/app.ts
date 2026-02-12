@@ -1,4 +1,4 @@
-import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, THRUST_ACCEL } from './constants';
+import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE, THRUST_ACCEL } from './constants';
 import { ManeuverSequence, SpacecraftState, StateVector } from './types';
 
 function applyInclination(state: StateVector, incDeg: number): StateVector {
@@ -52,6 +52,7 @@ export class App {
   private currentSequence: ManeuverSequence | null = null;
   private crashed = false;
   private lastPresetName = 'leo-circular';
+  private cameraLockTarget: 'earth' | 'shuttle' | 'free' = 'earth';
 
   constructor() {
     // Scene
@@ -293,6 +294,18 @@ export class App {
       reader.readAsText(file);
     });
 
+    // Camera target lock
+    const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement;
+    cameraTargetSelect.addEventListener('change', () => {
+      this.cameraLockTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'free';
+    });
+    this.sceneManager.renderer.domElement.addEventListener('mousedown', (e) => {
+      if (e.button === 2) {
+        this.cameraLockTarget = 'free';
+        cameraTargetSelect.value = 'free';
+      }
+    });
+
     // Export
     document.getElementById('btn-export')!.addEventListener('click', () => {
       if (!this.currentSequence) {
@@ -417,6 +430,14 @@ export class App {
 
     // Update timeline
     this.timeline.updatePlayhead(this.simTime);
+
+    // Camera lock target
+    if (this.cameraLockTarget === 'earth') {
+      this.sceneManager.controls.target.set(0, 0, 0);
+    } else if (this.cameraLockTarget === 'shuttle') {
+      const p = this.state.stateVector.position;
+      this.sceneManager.controls.target.set(p[0] * SCALE, p[1] * SCALE, p[2] * SCALE);
+    }
 
     // Render
     this.sceneManager.render();

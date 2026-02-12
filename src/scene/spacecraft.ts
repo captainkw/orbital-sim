@@ -81,8 +81,11 @@ export class SpacecraftMesh {
       const [tx, ty, tz] = state.thrustDirection;
       const len = Math.sqrt(tx * tx + ty * ty + tz * tz);
       if (len > 0) {
-        // Show arrow opposite to thrust direction (exhaust)
-        this.thrustArrow.setDirection(new THREE.Vector3(-tx / len, -ty / len, -tz / len));
+        // Transform ECI thrust direction to local frame, then negate for exhaust
+        const dir = new THREE.Vector3(-tx / len, -ty / len, -tz / len);
+        const invQuat = this.group.quaternion.clone().invert();
+        dir.applyQuaternion(invQuat);
+        this.thrustArrow.setDirection(dir);
         this.thrustArrow.setLength(0.8);
         this.thrustArrow.visible = true;
       }
