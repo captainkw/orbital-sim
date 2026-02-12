@@ -28,8 +28,8 @@ export class SpacecraftMesh {
       box.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
 
-      // Scale so the shuttle is ~1.8 Three.js units long (slightly oversized)
-      const desiredSize = 1.8;
+      // Scale for shuttle controlled here
+      const desiredSize = 1.0;
       const scaleFactor = desiredSize / maxDim;
 
       const mat = new THREE.MeshPhongMaterial({
@@ -43,10 +43,13 @@ export class SpacecraftMesh {
       mesh.scale.setScalar(scaleFactor);
 
       // Orient so the nose points along -Z (local forward)
-      // STL models vary in orientation; we'll rotate to match.
-      // The shuttle STL likely has nose along +X or +Z — adjust after inspection.
-      // Default: rotate so longest axis aligns with -Z
-      mesh.rotation.y = Math.PI; // nose forward along -Z
+      // Pitch down 90° (nose down), then roll left 90°
+      mesh.rotation.order = 'YXZ';
+      mesh.rotation.x = -Math.PI / 2; // pitch down 90°
+      mesh.rotation.z = -Math.PI / 2; // roll left 90°
+
+      // Offset upward so the shuttle sits above the orbit path
+      mesh.position.y = 0.175;
 
       this.shuttleGroup.add(mesh);
     });
@@ -78,8 +81,11 @@ export class SpacecraftMesh {
       const [tx, ty, tz] = state.thrustDirection;
       const len = Math.sqrt(tx * tx + ty * ty + tz * tz);
       if (len > 0) {
-        // Show arrow opposite to thrust direction (exhaust)
-        this.thrustArrow.setDirection(new THREE.Vector3(-tx / len, -ty / len, -tz / len));
+        // Transform ECI thrust direction to local frame, then negate for exhaust
+        const dir = new THREE.Vector3(-tx / len, -ty / len, -tz / len);
+        const invQuat = this.group.quaternion.clone().invert();
+        dir.applyQuaternion(invQuat);
+        this.thrustArrow.setDirection(dir);
         this.thrustArrow.setLength(0.8);
         this.thrustArrow.visible = true;
       }

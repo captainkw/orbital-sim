@@ -92,19 +92,19 @@ export class SpacecraftControls {
     let thrusting = false;
 
     if (this.input.isDown('KeyW')) {
-      thrustLocal.z -= THRUST_ACCEL; // Forward (-Z)
+      thrustLocal.z += THRUST_ACCEL; // Forward (+Z = prograde)
       thrusting = true;
     }
     if (this.input.isDown('KeyS')) {
-      thrustLocal.z += THRUST_ACCEL; // Backward (+Z)
+      thrustLocal.z -= THRUST_ACCEL; // Backward (-Z = retrograde)
       thrusting = true;
     }
     if (this.input.isDown('KeyA')) {
-      thrustLocal.x -= THRUST_ACCEL; // Left
+      thrustLocal.x += THRUST_ACCEL; // Left/port (+X)
       thrusting = true;
     }
     if (this.input.isDown('KeyD')) {
-      thrustLocal.x += THRUST_ACCEL; // Right
+      thrustLocal.x -= THRUST_ACCEL; // Right/starboard (-X)
       thrusting = true;
     }
 
