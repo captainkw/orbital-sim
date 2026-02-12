@@ -28,8 +28,8 @@ export class SpacecraftMesh {
       box.getSize(size);
       const maxDim = Math.max(size.x, size.y, size.z);
 
-      // Scale so the shuttle is ~1.8 Three.js units long (slightly oversized)
-      const desiredSize = 1.2;
+      // Scale for shuttle controlled here
+      const desiredSize = 1.0;
       const scaleFactor = desiredSize / maxDim;
 
       const mat = new THREE.MeshPhongMaterial({
