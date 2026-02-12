@@ -2,7 +2,7 @@ import { InputManager } from '../controls/input-manager';
 import { WarpLevel, WARP_LEVELS } from '../types';
 
 export class TimeControls {
-  private warpIndex = 0;
+  private warpIndex = 2; // Default to 100x
   paused = false;
 
   get warpLevel(): WarpLevel {
