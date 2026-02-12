@@ -6,6 +6,7 @@ const BLOCKED_KEYS = new Set([
 
 export class InputManager {
   private keys = new Map<string, boolean>();
+  private syntheticKeys = new Map<string, boolean>();
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -19,8 +20,12 @@ export class InputManager {
     });
   }
 
+  setSyntheticKey(code: string, state: boolean): void {
+    this.syntheticKeys.set(code, state);
+  }
+
   isDown(code: string): boolean {
-    return this.keys.get(code) === true;
+    return this.keys.get(code) === true || this.syntheticKeys.get(code) === true;
   }
 
   /** Consume a key press (returns true once, then false until re-pressed) */

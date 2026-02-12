@@ -22,6 +22,7 @@ import { stateToElements } from './physics/orbital-elements';
 import { predictOrbit } from './physics/trajectory';
 import { InputManager } from './controls/input-manager';
 import { SpacecraftControls } from './controls/spacecraft-controls';
+import { MobileControls } from './controls/mobile-controls';
 import { HUD } from './ui/hud';
 import { TimeControls } from './ui/time-controls';
 import { Timeline } from './ui/timeline';
@@ -75,6 +76,7 @@ export class App {
     this.inputManager = new InputManager();
     this.spacecraftControls = new SpacecraftControls(this.inputManager);
     this.timeControls = new TimeControls(this.inputManager);
+    new MobileControls(this.inputManager);
 
     // UI
     this.hud = new HUD();
