@@ -73,15 +73,15 @@ export function buildHohmannPreset(name: string, fromAltKm: number, toAltKm: num
 }
 
 /**
- * LEO 200km circular orbit — no maneuvers.
+ * LEO 600km circular orbit — no maneuvers.
  */
 export function leoCircularPreset(): ManeuverSequence {
-  const r = EARTH_RADIUS + 200e3;
+  const r = EARTH_RADIUS + 600e3;
   const v = Math.sqrt(GM_EARTH / r);
   const period = 2 * Math.PI * Math.sqrt(r ** 3 / GM_EARTH);
   return {
     version: 1,
-    name: 'LEO 200km Circular',
+    name: 'LEO 600km Circular',
     initialState: {
       position: [r, 0, 0],
       velocity: [0, 0, -v],
