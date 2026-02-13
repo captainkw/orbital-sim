@@ -1,6 +1,6 @@
 # Orbital Simulator
 
-A browser-based orbital mechanics simulator with realistic physics, Hohmann transfer orbits, atmospheric drag, and crash detection. Fly spacecraft, plan maneuvers, and explore orbital mechanics hands-on.
+A browser-based orbital mechanics simulator with realistic graviy, physics, Hohmann transfer orbits, atmospheric drag, and crash detection. Fly spacecraft, plan maneuvers, and explore orbital mechanics hands-on.
 
 Built with love by **Kuangwei Hwang**, with an assist from Claude.
 
