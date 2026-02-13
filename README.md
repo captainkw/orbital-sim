@@ -44,32 +44,38 @@ The project includes an `amplify.yml` build spec. Connect the GitHub repo to AWS
 
 ### Circular Orbits
 
-When you first load the simulator, you're placed in a 200 km Low Earth Orbit (LEO). Use the **altitude slider** at the bottom-right to change your orbital altitude from 100 km all the way up to 50,000 km and watch how orbital velocity, period, and the shape of your orbit change in real time.
+When you first load the simulator, you're placed in a 600 km Low Earth Orbit (LEO). Use the **altitude slider** at the bottom-right (or top-right on mobile) to change your orbital altitude from 100 km all the way up to 50,000 km and watch how orbital velocity, period, and the shape of your orbit change in real time.
 
 ### Hohmann Transfers
 
 The real fun starts with transfer orbits. Select any transfer preset from the dropdown and the UI switches to **from/to altitude sliders**, letting you dial in custom transfer parameters:
 
-- **Hohmann LEO to GEO** -- The classic transfer from 200 km to geostationary orbit at 35,786 km. Watch the two burns play out on the timeline: a **Transfer Injection** burn to enter the elliptical transfer orbit, then a **Circularization** burn at apoapsis to settle into GEO.
+- **Hohmann LEO to GEO** -- The classic transfer from 200 km to geostationary orbit at 35,786 km. Watch the two burns play out on the timeline: a **Transfer Injection** burn to enter the elliptical transfer orbit, then a **Circularization** burn at apogee to settle into GEO.
 - **Hohmann LEO to MEO** -- Transfer to Medium Earth Orbit at 20,200 km (GPS satellite altitude).
 - **Orbit Raise 400 to 800 km** -- A short hop between two LEO altitudes. Great for seeing how even small altitude changes require precise burns.
-- **Orbit Lower 800 to 400 km** -- The reverse: a **Deorbit Burn** (retrograde) drops the periapsis, followed by a **Circularization** burn at the lower altitude.
+- **Orbit Lower 800 to 400 km** -- The reverse: a **Deorbit Burn** (retrograde) drops the perigee, followed by a **Circularization** burn at the lower altitude.
 
 Once a transfer preset is loaded, drag the **From** and **To** sliders to experiment with different altitudes. The maneuver sequence regenerates live -- you can see the burn markers shift on the timeline and watch the delta-V requirements change.
 
 ### Crashing (and Trying Again)
 
-If your orbit decays below 70 km altitude, atmospheric drag takes over and the spacecraft is destroyed during reentry. The screen flashes **"YOU CRASHED"** with a 60-second countdown -- click anywhere or wait it out to restart from the last preset. This is especially relevant at low altitudes where drag is non-negligible, or if you accidentally thrust retrograde and lower your periapsis into the atmosphere.
+If your orbit decays below 70 km altitude, atmospheric drag takes over and the spacecraft is destroyed during reentry. The screen flashes **"YOU CRASHED"** with a 60-second countdown -- click anywhere or wait it out to restart from the last preset. This is especially relevant at low altitudes where drag is non-negligible, or if you accidentally thrust retrograde and lower your perigee into the atmosphere.
 
 ### Time Warp
 
 The warp slider at the top of the screen lets you speed up time across seven levels, from real-time all the way to **1,000,000x**. At maximum warp, a 5-hour Hohmann transfer to GEO completes in seconds. Use the `,` and `.` keys for fine-grained control.
 
+### Camera Lock
+
+Use the **camera target dropdown** to lock the camera on Earth, the shuttle, or switch to free camera mode. Right-clicking automatically switches to free camera.
+
 ---
 
 ## Controls
 
-### Spacecraft
+### Desktop
+
+#### Spacecraft
 
 | Key | Action |
 |-----|--------|
@@ -82,7 +88,7 @@ The warp slider at the top of the screen lets you speed up time across seven lev
 
 Rotation rate: 1 rad/s in the spacecraft's local frame. Thrust acceleration: 10 m/s^2, transformed from local to ECI frame via the spacecraft's quaternion.
 
-### Time
+#### Time
 
 | Key | Action |
 |-----|--------|
@@ -92,13 +98,30 @@ Rotation rate: 1 rad/s in the spacecraft's local frame. Thrust acceleration: 10 
 
 Warp levels: 1x, 10x, 100x, 1,000x, 10,000x, 100,000x, 1,000,000x. Also controllable via the slider at the top of the screen.
 
-### Camera
+#### Camera
 
 | Input | Action |
 |-------|--------|
 | Left click + drag | Orbit around Earth |
 | Scroll wheel | Zoom in/out |
 | Right click + drag | Pan |
+
+### Mobile
+
+On touch devices, the desktop keyboard help is hidden and two virtual joysticks appear at the bottom of the screen:
+
+- **Left joystick** ("Manual Thrust Control") -- equivalent to WASD keys for thrust
+- **Right joystick** ("Manual Pitch / Yaw") -- equivalent to arrow keys for rotation
+
+Camera controls on mobile:
+
+| Gesture | Action |
+|---------|--------|
+| 1-finger drag | Orbit around Earth |
+| 2-finger pinch | Zoom in/out |
+| 2-finger drag | Pan |
+
+The altitude/preset controls move to the top-right corner on mobile, and the Import/Export buttons are hidden.
 
 ### Presets & Import/Export
 
@@ -108,6 +131,7 @@ Warp levels: 1x, 10x, 100x, 1,000x, 10,000x, 100,000x, 1,000,000x. Also controll
 | Altitude slider | Adjust circular orbit altitude (100--50,000 km) |
 | Inclination slider | Tilt the orbit plane (0°--90°) |
 | From/To sliders | Adjust transfer orbit departure and arrival altitudes |
+| Camera target | Lock camera to Earth, shuttle, or free mode |
 | Import JSON | Load a maneuver sequence from file |
 | Export JSON | Save the current sequence to file |
 
@@ -166,7 +190,7 @@ For orbit lowering, the burns are applied in reverse as retrograde impulses. Bur
 |----------|-------|--------|
 | GM_Earth | 3.986004418 x 10^14 m^3/s^2 | IERS / IAU |
 | Earth mean radius | 6.371 x 10^6 m | WGS 84 |
-| Circular orbit velocity (200 km) | ~7,784 m/s | Derived: sqrt(GM/r) |
+| Circular orbit velocity (600 km) | ~7,558 m/s | Derived: sqrt(GM/r) |
 | GEO altitude | 35,786 km | Standard |
 
 ---
@@ -179,17 +203,18 @@ The heads-up display (top-left) shows real-time telemetry:
 |-------|-------------|
 | ALT | Altitude above Earth's surface (km) |
 | VEL | Orbital velocity (m/s) |
-| APO | Apoapsis altitude (km) |
-| PER | Periapsis altitude (km) |
+| APO | Apogee altitude (km) |
+| PER | Perigee altitude (km) |
 | SMA | Semi-major axis (km) |
 | ECC | Eccentricity |
 | INC | Inclination (degrees) |
 | RAAN | Right Ascension of Ascending Node (degrees) |
-| AoP | Argument of Periapsis (degrees) |
+| AoP | Argument of Perigee (degrees) |
 | TA | True Anomaly (degrees) |
 | TIME | Simulation elapsed time (HH:MM:SS) |
 | WARP | Current time warp multiplier |
 | THR | Thrust status (ACTIVE / OFF) |
+| DRAG | Atmospheric drag acceleration (m/s^2) |
 
 ---
 
@@ -202,8 +227,8 @@ Maneuver sequences can be imported/exported as JSON:
   "version": 1,
   "name": "My Maneuver Sequence",
   "initialState": {
-    "position": [6571000, 0, 0],
-    "velocity": [0, 0, -7790]
+    "position": [6971000, 0, 0],
+    "velocity": [0, 0, -7558]
   },
   "maneuvers": [
     {
@@ -267,16 +292,19 @@ orbital-sim/
 │   ├── scene/
 │   │   ├── scene-manager.ts # Renderer, camera, OrbitControls
 │   │   ├── earth.ts         # Textured sphere
-│   │   ├── spacecraft.ts    # Shuttle model, orientation, thrust arrow
+│   │   ├── spacecraft.ts    # Shuttle STL model, orientation, thrust arrow
 │   │   ├── orbit-line.ts    # Predicted orbit line
 │   │   ├── celestial-sphere.ts  # Stars, sun, moon
 │   │   └── lighting.ts      # Directional sunlight + ambient
 │   ├── controls/
-│   │   ├── input-manager.ts # Keyboard state map
+│   │   ├── input-manager.ts # Keyboard state map + synthetic key injection
 │   │   ├── camera-controls.ts  # OrbitControls wrapper
-│   │   └── spacecraft-controls.ts  # Rotation + thrust
+│   │   ├── spacecraft-controls.ts  # Rotation + thrust
+│   │   ├── virtual-joystick.ts    # Canvas-based touch joystick
+│   │   └── mobile-controls.ts    # Mobile detection, joystick setup
 │   ├── ui/
 │   │   ├── hud.ts           # Telemetry overlay
+│   │   ├── orbital-display.ts  # Orbital elements display
 │   │   ├── timeline.ts      # Visual timeline with burn labels
 │   │   ├── time-controls.ts # Pause/play, warp slider
 │   │   └── crash-overlay.ts # Crash detection and restart
@@ -284,8 +312,11 @@ orbital-sim/
 │       ├── maneuver-schema.ts    # JSON validation and serialization
 │       ├── maneuver-executor.ts  # Fires burns at scheduled sim times
 │       └── presets.ts            # Preset builder + pre-built sequences
-├── public/textures/
-│   └── earth_daymap.jpg     # NASA Blue Marble texture
+├── public/
+│   ├── textures/
+│   │   └── earth_daymap.jpg # NASA Blue Marble texture
+│   └── models/
+│       └── shuttle.stl      # Space Shuttle 3D model
 ├── amplify.yml              # AWS Amplify build spec
 ├── vite.config.ts
 ├── tsconfig.json
@@ -298,7 +329,7 @@ orbital-sim/
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| [Three.js](https://threejs.org/) | ^0.182.0 | 3D rendering engine -- WebGL renderer, PerspectiveCamera, SphereGeometry, MeshPhongMaterial, BufferGeometry, Line, ArrowHelper, OrbitControls, TextureLoader, logarithmic depth buffer |
+| [Three.js](https://threejs.org/) | ^0.182.0 | 3D rendering engine -- WebGL renderer, PerspectiveCamera, SphereGeometry, MeshPhongMaterial, BufferGeometry, Line, ArrowHelper, OrbitControls, TextureLoader, STLLoader, logarithmic depth buffer |
 | [@types/three](https://www.npmjs.com/package/@types/three) | ^0.182.0 | TypeScript type definitions for Three.js |
 | [TypeScript](https://www.typescriptlang.org/) | ^5.9.3 | Static type checking (ES2022 target, strict mode, bundler module resolution) |
 | [Vite](https://vite.dev/) | ^7.3.1 | Build tool and dev server -- HMR, ES module bundling, Rollup-based production builds |
@@ -315,7 +346,7 @@ orbital-sim/
 
 2. **Curtis, H. D.** (2014). *Orbital Mechanics for Engineering Students* (3rd ed.). Butterworth-Heinemann.
    - Detailed derivations of the classical orbital elements from state vectors.
-   - Used for: eccentricity vector computation, argument of periapsis, true anomaly, RAAN from the node vector.
+   - Used for: eccentricity vector computation, argument of perigee, true anomaly, RAAN from the node vector.
 
 3. **Vallado, D. A.** (2013). *Fundamentals of Astrodynamics and Applications* (4th ed.). Microcosm Press.
    - Comprehensive astrodynamics reference covering coordinate frames, orbital element conversions, and numerical propagation.
@@ -335,7 +366,7 @@ orbital-sim/
 
 6. **Hohmann, W.** (1925). *Die Erreichbarkeit der Himmelskörper* (The Attainability of Heavenly Bodies). Oldenbourg.
    - Original publication describing the minimum-energy two-impulse transfer between coplanar circular orbits.
-   - Used for: the transfer orbit semi-major axis formula `a_t = (r1 + r2) / 2`, and delta-V calculations at periapsis and apoapsis.
+   - Used for: the transfer orbit semi-major axis formula `a_t = (r1 + r2) / 2`, and delta-V calculations at perigee and apogee.
 
 ### Gravitational Parameters & Earth Constants
 
@@ -374,7 +405,7 @@ orbital-sim/
     - Practical reference for Three.js scene setup, PerspectiveCamera, MeshPhongMaterial, BufferGeometry, and OrbitControls.
 
 14. **Three.js Documentation**. https://threejs.org/docs/
-    - API reference for all Three.js classes used: WebGLRenderer (with logarithmic depth buffer), SphereGeometry, ConeGeometry, LineBasicMaterial, ArrowHelper, TextureLoader, Quaternion, Matrix4.
+    - API reference for all Three.js classes used: WebGLRenderer (with logarithmic depth buffer), SphereGeometry, ConeGeometry, LineBasicMaterial, ArrowHelper, TextureLoader, STLLoader, Quaternion, Matrix4.
 
 ---
 
