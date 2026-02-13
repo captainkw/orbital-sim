@@ -16,6 +16,7 @@ export class SceneManager {
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.domElement.style.touchAction = 'none';
     document.body.prepend(this.renderer.domElement);
 
     // Camera starts at north pole, looking down
@@ -37,12 +38,16 @@ export class SceneManager {
     this.controls.maxDistance = 500;
     this.controls.listenToKeyEvents = undefined as any; // disable keyboard panning
 
-    // Mobile: 2-finger dolly+pan
+    // Mobile: enable pan and 2-finger dolly+pan
     if ('ontouchstart' in window) {
+      this.controls.enablePan = true;
+      this.controls.screenSpacePanning = true;
       this.controls.touches = {
         ONE: THREE.TOUCH.ROTATE,
         TWO: THREE.TOUCH.DOLLY_PAN,
       };
+      // Zoom out 10% on mobile for a wider view
+      this.camera.position.set(0, 22, 0);
     }
 
     // Background
