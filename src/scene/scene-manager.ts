@@ -46,8 +46,8 @@ export class SceneManager {
         ONE: THREE.TOUCH.ROTATE,
         TWO: THREE.TOUCH.DOLLY_PAN,
       };
-      // Zoom out 10% on mobile for a wider view
-      this.camera.position.set(0, 22, 0);
+      // Slightly wider default framing on mobile so orbit arc fits better.
+      this.camera.position.set(0, 24, 0);
     }
 
     // Background

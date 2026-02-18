@@ -1,5 +1,6 @@
 import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE } from './constants';
 import { ManeuverSequence, SpacecraftState, StateVector } from './types';
+import * as THREE from 'three';
 
 function applyInclination(state: StateVector, incDeg: number): StateVector {
   const inc = incDeg * Math.PI / 180;
@@ -54,6 +55,16 @@ export class App {
   private crashed = false;
   private lastPresetName = 'leo-circular';
   private cameraLockTarget: 'earth' | 'shuttle' | 'free' = 'earth';
+  private cameraTransition: {
+    startTime: number;
+    duration: number;
+    startPos: THREE.Vector3;
+    endPos: THREE.Vector3;
+    startTarget: THREE.Vector3;
+    endTarget: THREE.Vector3;
+  } | null = null;
+  private shuttleCameraDistance = 2000 * 1000 * SCALE;
+  private lastShuttleTarget: THREE.Vector3 | null = null;
 
   constructor() {
     // Scene
@@ -298,13 +309,35 @@ export class App {
 
     // Camera target lock
     const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement;
+    const recenterShuttleBtn = document.getElementById('btn-recenter-shuttle') as HTMLButtonElement;
+    const updateRecenterVisibility = () => {
+      recenterShuttleBtn.style.display = this.cameraLockTarget === 'shuttle' ? 'inline-block' : 'none';
+    };
     cameraTargetSelect.addEventListener('change', () => {
-      this.cameraLockTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'free';
+      const previousTarget = this.cameraLockTarget;
+      const nextTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'free';
+      this.cameraLockTarget = nextTarget;
+
+      if (previousTarget === 'earth' && nextTarget === 'shuttle') {
+        this.startEarthToShuttleTransition();
+      } else {
+        this.cameraTransition = null;
+        this.lastShuttleTarget = null;
+      }
+      updateRecenterVisibility();
     });
+    recenterShuttleBtn.addEventListener('click', () => {
+      if (this.cameraLockTarget !== 'shuttle') return;
+      this.startShuttleRecenterTransition(0.7);
+    });
+    updateRecenterVisibility();
     this.sceneManager.renderer.domElement.addEventListener('mousedown', (e) => {
       if (e.button === 2) {
         this.cameraLockTarget = 'free';
+        this.cameraTransition = null;
+        this.lastShuttleTarget = null;
         cameraTargetSelect.value = 'free';
+        updateRecenterVisibility();
       }
     });
 
@@ -346,6 +379,53 @@ export class App {
   start() {
     this.lastFrameTime = performance.now() / 1000;
     this.loop();
+  }
+
+  private startEarthToShuttleTransition() {
+    this.startShuttleRecenterTransition(1.1);
+  }
+
+  private startShuttleRecenterTransition(duration: number) {
+    const currentPos = this.sceneManager.camera.position.clone();
+    const currentTarget = this.sceneManager.controls.target.clone();
+    const shuttlePose = this.getShuttleCameraPose(2000 * 1000 * SCALE);
+
+    this.cameraTransition = {
+      startTime: performance.now() / 1000,
+      duration,
+      startPos: currentPos,
+      endPos: shuttlePose.position,
+      startTarget: currentTarget,
+      endTarget: shuttlePose.target,
+    };
+    this.shuttleCameraDistance = shuttlePose.position.distanceTo(shuttlePose.target);
+    this.lastShuttleTarget = null;
+  }
+
+  private getShuttleTarget(): THREE.Vector3 {
+    const p = this.state.stateVector.position;
+    return new THREE.Vector3(p[0] * SCALE, p[1] * SCALE, p[2] * SCALE);
+  }
+
+  private getShuttleCameraPose(distance = this.shuttleCameraDistance): { position: THREE.Vector3; target: THREE.Vector3 } {
+    const target = this.getShuttleTarget();
+
+    const [qx, qy, qz, qw] = this.state.quaternion;
+    const shuttleQuat = new THREE.Quaternion(qx, qy, qz, qw);
+
+    // Local spacecraft axes in world space:
+    // +Z is treated as forward/prograde in control space, so -Z is behind.
+    const behind = new THREE.Vector3(0, 0, -1).applyQuaternion(shuttleQuat).normalize();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(shuttleQuat).normalize();
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(shuttleQuat).normalize();
+
+    const viewDirection = behind.clone()
+      .addScaledVector(up, 0.55)
+      .addScaledVector(right, 0.55)
+      .normalize();
+    const position = target.clone().addScaledVector(viewDirection, distance);
+
+    return { position, target };
   }
 
   private loop = () => {
@@ -433,12 +513,58 @@ export class App {
     // Update timeline
     this.timeline.updatePlayhead(this.simTime);
 
-    // Camera lock target
+    // Camera lock target / transition
     if (this.cameraLockTarget === 'earth') {
       this.sceneManager.controls.target.set(0, 0, 0);
+      this.cameraTransition = null;
+      this.lastShuttleTarget = null;
     } else if (this.cameraLockTarget === 'shuttle') {
-      const p = this.state.stateVector.position;
-      this.sceneManager.controls.target.set(p[0] * SCALE, p[1] * SCALE, p[2] * SCALE);
+      const nowSeconds = performance.now() / 1000;
+      const shuttleTarget = this.getShuttleTarget();
+
+      if (this.cameraTransition) {
+        const tRaw = (nowSeconds - this.cameraTransition.startTime) / this.cameraTransition.duration;
+        const t = Math.max(0, Math.min(1, tRaw));
+        const smoothT = t * t * (3 - 2 * t); // smoothstep easing
+
+        // Keep transition attached to the moving shuttle target.
+        const targetDelta = shuttleTarget.clone().sub(this.cameraTransition.endTarget);
+        const movingEndPos = this.cameraTransition.endPos.clone().add(targetDelta);
+
+        this.sceneManager.camera.position.lerpVectors(
+          this.cameraTransition.startPos,
+          movingEndPos,
+          smoothT
+        );
+        this.sceneManager.controls.target.lerpVectors(
+          this.cameraTransition.startTarget,
+          shuttleTarget,
+          smoothT
+        );
+
+        if (t >= 1) {
+          this.cameraTransition = null;
+          this.lastShuttleTarget = shuttleTarget.clone();
+          this.shuttleCameraDistance = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
+        }
+      } else {
+        // Preserve user orbit/pan/zoom. In lock mode we only translate camera+target
+        // by the shuttle's movement so the current user view is respected.
+        if (this.lastShuttleTarget) {
+          const delta = shuttleTarget.clone().sub(this.lastShuttleTarget);
+          this.sceneManager.camera.position.add(delta);
+          this.sceneManager.controls.target.copy(shuttleTarget);
+        } else {
+          const delta = shuttleTarget.clone().sub(this.sceneManager.controls.target);
+          this.sceneManager.camera.position.add(delta);
+          this.sceneManager.controls.target.copy(shuttleTarget);
+        }
+        this.lastShuttleTarget = shuttleTarget.clone();
+        this.shuttleCameraDistance = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
+      }
+    } else {
+      this.cameraTransition = null;
+      this.lastShuttleTarget = null;
     }
 
     // Render

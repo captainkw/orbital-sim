@@ -107,6 +107,10 @@
       background: rgba(0, 255, 136, 0.15);
     }
 
+    #btn-recenter-shuttle {
+      display: none;
+    }
+
     #warp-container {
       position: absolute;
       top: 10px;
@@ -146,6 +150,9 @@
         flex-direction: column;
         align-items: flex-end;
         gap: 4px;
+      }
+      #btn-recenter-shuttle {
+        max-width: 170px;
       }
       #import-export #btn-import,
       #import-export #btn-export { display: none; }
@@ -199,6 +206,7 @@ Scroll Wheel .. Zoom In/Out</div>
       <option value="shuttle">Lock: Shuttle</option>
       <option value="free">Free Camera</option>
     </select>
+    <button id="btn-recenter-shuttle">Recenter Shuttle View</button>
     <select id="preset-select">
       <option value="">-- Presets --</option>
       <option value="leo-circular">LEO 600km Circular</option>
