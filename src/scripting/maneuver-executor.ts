@@ -25,8 +25,7 @@ export class ManeuverExecutor {
    */
   getThrustAtTime(
     simTime: number,
-    state: SpacecraftState,
-    thrustMagnitude: number
+    state: SpacecraftState
   ): [number, number, number] {
     if (!this.sequence) return [0, 0, 0];
 

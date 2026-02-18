@@ -1,4 +1,4 @@
-import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE, THRUST_ACCEL } from './constants';
+import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE } from './constants';
 import { ManeuverSequence, SpacecraftState, StateVector } from './types';
 
 function applyInclination(state: StateVector, incDeg: number): StateVector {
@@ -370,7 +370,7 @@ export class App {
         // Get thrust: scripted maneuver overrides manual if active
         let thrust: [number, number, number];
         const scriptedThrust = this.maneuverExecutor.getThrustAtTime(
-          this.simTime, this.state, THRUST_ACCEL
+          this.simTime, this.state
         );
 
         if (this.maneuverExecutor.isActive) {

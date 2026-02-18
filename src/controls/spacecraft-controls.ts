@@ -7,6 +7,7 @@ export class SpacecraftControls {
   private input: InputManager;
   private pitchOffset = 0;
   private yawOffset = 0;
+  private lastQuat = new THREE.Quaternion(0, 0, 0, 1);
 
   constructor(input: InputManager) {
     this.input = input;
@@ -35,8 +36,19 @@ export class SpacecraftControls {
     const vel = new THREE.Vector3(vx, vy, vz);
     const speed = vel.length();
 
+    // Guard against degenerate velocity vectors to avoid NaNs.
+    if (speed < 1e-6) {
+      state.quaternion = [this.lastQuat.x, this.lastQuat.y, this.lastQuat.z, this.lastQuat.w];
+      return this.applyThrust(state, this.lastQuat);
+    }
+
     // Cross-track: radial × velocity (orbit normal direction)
-    const crossTrack = new THREE.Vector3().crossVectors(radial, vel).normalize();
+    const crossTrack = new THREE.Vector3().crossVectors(radial, vel);
+    if (crossTrack.lengthSq() < 1e-12) {
+      state.quaternion = [this.lastQuat.x, this.lastQuat.y, this.lastQuat.z, this.lastQuat.w];
+      return this.applyThrust(state, this.lastQuat);
+    }
+    crossTrack.normalize();
 
     // Prograde: cross-track × radial (in orbital plane, along velocity for circular)
     const prograde = new THREE.Vector3().crossVectors(crossTrack, radial).normalize();
@@ -85,8 +97,13 @@ export class SpacecraftControls {
     const finalQuat = baseQuat.clone().multiply(yawQuat).multiply(pitchQuat);
     finalQuat.normalize();
 
+    this.lastQuat.copy(finalQuat);
     state.quaternion = [finalQuat.x, finalQuat.y, finalQuat.z, finalQuat.w];
 
+    return this.applyThrust(state, finalQuat);
+  }
+
+  private applyThrust(state: SpacecraftState, quat: THREE.Quaternion): [number, number, number] {
     // --- Thrust (WASD) ---
     let thrustLocal = new THREE.Vector3(0, 0, 0);
     let thrusting = false;
@@ -112,7 +129,7 @@ export class SpacecraftControls {
 
     if (thrusting) {
       // Transform local thrust to ECI frame
-      thrustLocal.applyQuaternion(finalQuat);
+      thrustLocal.applyQuaternion(quat);
       const eciThrust: [number, number, number] = [thrustLocal.x, thrustLocal.y, thrustLocal.z];
       state.thrustDirection = eciThrust;
       return eciThrust;
