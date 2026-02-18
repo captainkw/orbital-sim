@@ -18,6 +18,10 @@ export class InputManager {
     window.addEventListener('keyup', (e) => {
       this.keys.set(e.code, false);
     });
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.syntheticKeys.clear();
+    });
   }
 
   setSyntheticKey(code: string, state: boolean): void {

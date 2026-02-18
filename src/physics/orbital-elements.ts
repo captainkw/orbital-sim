@@ -19,13 +19,6 @@ export function stateToElements(sv: StateVector): OrbitalElements {
   const hMag = Math.sqrt(hx * hx + hy * hy + hz * hz);
 
   // Node vector n = (0,1,0) × h (Y-up: north pole is Y axis)
-  const nx = -hz;       // 1*hz - 0*hy -> wait: (0,1,0) × (hx,hy,hz) = (1*hz - 0*hy, 0*hx - 1*hz, ... )
-  // Correcting: (0,1,0) × (hx,hy,hz) = (1*hz - 0*hy, 0*hx - 1*hz, 1*hy - 0*hx)
-  // = (hz, -hz... no let me be precise
-  // cross(a, b) = (a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x)
-  // a=(0,1,0), b=(hx,hy,hz)
-  // = (1*hz - 0*hy, 0*hx - 0*hz, 0*hy - 1*hx)
-  // = (hz, 0, -hx)
   const nodeX = hz;
   const nodeY = 0;
   const nodeZ = -hx;
