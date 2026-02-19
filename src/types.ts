@@ -36,4 +36,24 @@ export interface SpacecraftState {
 
 export type WarpLevel = number;
 
-export const WARP_LEVELS: WarpLevel[] = [1, 10, 100, 1000, 10000, 100000, 1000000];
+export const WARP_LEVELS: WarpLevel[] = [
+  1,
+  5,
+  10,
+  25,
+  50,
+  75,
+  100,
+  150,
+  200,
+  300,
+  400,
+  500,
+  750,
+  1000,
+  2000,
+  5000,
+  10000,
+  100000,
+  1000000,
+];

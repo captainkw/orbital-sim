@@ -63,8 +63,11 @@ export class App {
     startTarget: THREE.Vector3;
     endTarget: THREE.Vector3;
   } | null = null;
-  private shuttleCameraDistance = 2000 * 1000 * SCALE;
+  private readonly defaultShuttleCameraDistance = 2400 * 1000 * SCALE; // 20% farther than 2000 km
+  private shuttleCameraDistance = this.defaultShuttleCameraDistance;
   private lastShuttleTarget: THREE.Vector3 | null = null;
+  private introEarthTransitionQueued = false;
+  private introStartTime = 0;
 
   constructor() {
     // Scene
@@ -310,13 +313,12 @@ export class App {
     // Camera target lock
     const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement;
     const recenterShuttleBtn = document.getElementById('btn-recenter-shuttle') as HTMLButtonElement;
-    const updateRecenterVisibility = () => {
-      recenterShuttleBtn.style.display = this.cameraLockTarget === 'shuttle' ? 'inline-block' : 'none';
-    };
+    const updateRecenterVisibility = () => this.updateRecenterVisibility();
     cameraTargetSelect.addEventListener('change', () => {
       const previousTarget = this.cameraLockTarget;
       const nextTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'free';
       this.cameraLockTarget = nextTarget;
+      this.introEarthTransitionQueued = false;
 
       if (previousTarget === 'earth' && nextTarget === 'shuttle') {
         this.startEarthToShuttleTransition();
@@ -338,6 +340,7 @@ export class App {
         this.cameraLockTarget = 'free';
         this.cameraTransition = null;
         this.lastShuttleTarget = null;
+        this.introEarthTransitionQueued = false;
         cameraTargetSelect.value = 'free';
         updateRecenterVisibility();
       }
@@ -379,8 +382,29 @@ export class App {
   }
 
   start() {
+    // Intro: begin in shuttle view, then transition to Earth view.
+    this.cameraLockTarget = 'shuttle';
+    const shuttlePose = this.getShuttleCameraPose(this.defaultShuttleCameraDistance);
+    this.sceneManager.camera.position.copy(shuttlePose.position);
+    this.sceneManager.controls.target.copy(shuttlePose.target);
+    this.lastShuttleTarget = shuttlePose.target.clone();
+    this.cameraTransition = null;
+
+    const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement | null;
+    if (cameraTargetSelect) cameraTargetSelect.value = 'shuttle';
+    this.updateRecenterVisibility();
+
+    this.introStartTime = performance.now() / 1000;
+    this.introEarthTransitionQueued = true;
+
     this.lastFrameTime = performance.now() / 1000;
     this.loop();
+  }
+
+  private updateRecenterVisibility() {
+    const recenterShuttleBtn = document.getElementById('btn-recenter-shuttle') as HTMLButtonElement | null;
+    if (!recenterShuttleBtn) return;
+    recenterShuttleBtn.style.display = this.cameraLockTarget === 'shuttle' ? 'inline-block' : 'none';
   }
 
   private startEarthToShuttleTransition() {
@@ -406,7 +430,7 @@ export class App {
   private startShuttleRecenterTransition(duration: number) {
     const currentPos = this.sceneManager.camera.position.clone();
     const currentTarget = this.sceneManager.controls.target.clone();
-    const shuttlePose = this.getShuttleCameraPose(2000 * 1000 * SCALE);
+    const shuttlePose = this.getShuttleCameraPose(this.defaultShuttleCameraDistance);
 
     this.cameraTransition = {
       startTime: performance.now() / 1000,
@@ -454,7 +478,7 @@ export class App {
     const orbitRadiusSceneUnits = orbitRadiusMeters * SCALE;
     const fovRad = THREE.MathUtils.degToRad(this.sceneManager.camera.fov);
     const fitDistance = orbitRadiusSceneUnits / Math.tan(fovRad / 2);
-    const distance = fitDistance * 1.25;
+    const distance = fitDistance * 1.8;
     const position = orbitNormal.multiplyScalar(distance);
 
     return { position, target };
@@ -490,6 +514,15 @@ export class App {
 
     // Time controls
     this.timeControls.update();
+
+    if (this.introEarthTransitionQueued && (now - this.introStartTime) > 1.0) {
+      this.introEarthTransitionQueued = false;
+      this.cameraLockTarget = 'earth';
+      this.startEarthRecenterTransition(1.1);
+      const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement | null;
+      if (cameraTargetSelect) cameraTargetSelect.value = 'earth';
+      this.updateRecenterVisibility();
+    }
 
     if (!this.timeControls.paused && !this.crashed) {
       // Spacecraft keyboard controls (rotation uses frame dt)
@@ -584,11 +617,10 @@ export class App {
           earthPose.target,
           smoothT
         );
-        if (t >= 1) this.cameraTransition = null;
-      } else {
-        // Keep Earth lock in a full-orbit, plane-perpendicular framing.
-        this.sceneManager.camera.position.lerp(earthPose.position, 0.12);
-        this.sceneManager.controls.target.lerp(earthPose.target, 0.2);
+        if (t >= 1) {
+          this.cameraTransition = null;
+          this.sceneManager.controls.target.copy(earthPose.target);
+        }
       }
       this.lastShuttleTarget = null;
     } else if (this.cameraLockTarget === 'shuttle') {
