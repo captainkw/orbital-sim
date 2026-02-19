@@ -114,11 +114,13 @@
     #warp-container {
       position: absolute;
       top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
+      left: 230px;
+      right: 10px;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
+      z-index: 20;
     }
 
     #warp-indicator {
@@ -132,19 +134,37 @@
     }
 
     #warp-slider {
-      width: 100px;
+      width: 100%;
+      max-width: 1200px;
+      height: 28px;
       accent-color: #ffaa00;
+    }
+    #warp-slider::-webkit-slider-thumb {
+      width: 20px;
+      height: 20px;
+    }
+    #warp-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
     }
     @media (hover: none) and (pointer: coarse) {
       #controls-help { display: none; }
       #warp-container {
-        left: auto;
-        right: 10px;
-        transform: none;
+        top: 8px;
+        left: 130px;
+        right: 6px;
+        gap: 4px;
+      }
+      #warp-indicator {
+        font-size: 14px;
+      }
+      #warp-slider {
+        height: 36px;
       }
       #import-export {
         position: absolute;
-        top: 50px;
+        top: 58px;
         right: 10px;
         bottom: auto;
         flex-direction: column;
@@ -177,7 +197,7 @@ L-Click Drag .. Orbit Camera
 R-Click Drag .. Pan Camera
 Scroll Wheel .. Zoom In/Out</div>
   <div id="warp-container">
-    <input type="range" id="warp-slider" min="0" max="6" value="2" step="1">
+    <input type="range" id="warp-slider" min="0" max="0" value="0" step="1">
     <div id="warp-indicator"></div>
   </div>
   <div id="import-export">
