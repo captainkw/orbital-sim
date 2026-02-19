@@ -320,6 +320,8 @@ export class App {
 
       if (previousTarget === 'earth' && nextTarget === 'shuttle') {
         this.startEarthToShuttleTransition();
+      } else if (nextTarget === 'earth' && previousTarget !== 'earth') {
+        this.startEarthRecenterTransition(1.1);
       } else {
         this.cameraTransition = null;
         this.lastShuttleTarget = null;
@@ -385,6 +387,22 @@ export class App {
     this.startShuttleRecenterTransition(1.1);
   }
 
+  private startEarthRecenterTransition(duration: number) {
+    const currentPos = this.sceneManager.camera.position.clone();
+    const currentTarget = this.sceneManager.controls.target.clone();
+    const earthPose = this.getEarthCameraPose();
+
+    this.cameraTransition = {
+      startTime: performance.now() / 1000,
+      duration,
+      startPos: currentPos,
+      endPos: earthPose.position,
+      startTarget: currentTarget,
+      endTarget: earthPose.target,
+    };
+    this.lastShuttleTarget = null;
+  }
+
   private startShuttleRecenterTransition(duration: number) {
     const currentPos = this.sceneManager.camera.position.clone();
     const currentTarget = this.sceneManager.controls.target.clone();
@@ -405,6 +423,41 @@ export class App {
   private getShuttleTarget(): THREE.Vector3 {
     const p = this.state.stateVector.position;
     return new THREE.Vector3(p[0] * SCALE, p[1] * SCALE, p[2] * SCALE);
+  }
+
+  private getEarthCameraPose(): { position: THREE.Vector3; target: THREE.Vector3 } {
+    const target = new THREE.Vector3(0, 0, 0);
+    const [x, y, z] = this.state.stateVector.position;
+    const [vx, vy, vz] = this.state.stateVector.velocity;
+    const rVec = new THREE.Vector3(x, y, z);
+    const vVec = new THREE.Vector3(vx, vy, vz);
+
+    // 90-degree viewpoint relative to the orbit plane.
+    let orbitNormal = new THREE.Vector3().crossVectors(rVec, vVec);
+    if (orbitNormal.lengthSq() < 1e-12) {
+      orbitNormal = new THREE.Vector3(0, 1, 0);
+    } else {
+      orbitNormal.normalize();
+    }
+
+    const elements = stateToElements(this.state.stateVector);
+    const currentRadius = rVec.length();
+    let orbitRadiusMeters = currentRadius;
+    if (Number.isFinite(elements.semiMajorAxis) && elements.eccentricity < 1) {
+      const apoapsis = elements.semiMajorAxis * (1 + elements.eccentricity);
+      if (Number.isFinite(apoapsis) && apoapsis > 0) {
+        orbitRadiusMeters = Math.max(orbitRadiusMeters, apoapsis);
+      }
+    }
+    orbitRadiusMeters = Math.max(orbitRadiusMeters, EARTH_RADIUS);
+
+    const orbitRadiusSceneUnits = orbitRadiusMeters * SCALE;
+    const fovRad = THREE.MathUtils.degToRad(this.sceneManager.camera.fov);
+    const fitDistance = orbitRadiusSceneUnits / Math.tan(fovRad / 2);
+    const distance = fitDistance * 1.25;
+    const position = orbitNormal.multiplyScalar(distance);
+
+    return { position, target };
   }
 
   private getShuttleCameraPose(distance = this.shuttleCameraDistance): { position: THREE.Vector3; target: THREE.Vector3 } {
@@ -515,8 +568,28 @@ export class App {
 
     // Camera lock target / transition
     if (this.cameraLockTarget === 'earth') {
-      this.sceneManager.controls.target.set(0, 0, 0);
-      this.cameraTransition = null;
+      const nowSeconds = performance.now() / 1000;
+      const earthPose = this.getEarthCameraPose();
+      if (this.cameraTransition) {
+        const tRaw = (nowSeconds - this.cameraTransition.startTime) / this.cameraTransition.duration;
+        const t = Math.max(0, Math.min(1, tRaw));
+        const smoothT = t * t * (3 - 2 * t);
+        this.sceneManager.camera.position.lerpVectors(
+          this.cameraTransition.startPos,
+          earthPose.position,
+          smoothT
+        );
+        this.sceneManager.controls.target.lerpVectors(
+          this.cameraTransition.startTarget,
+          earthPose.target,
+          smoothT
+        );
+        if (t >= 1) this.cameraTransition = null;
+      } else {
+        // Keep Earth lock in a full-orbit, plane-perpendicular framing.
+        this.sceneManager.camera.position.lerp(earthPose.position, 0.12);
+        this.sceneManager.controls.target.lerp(earthPose.target, 0.2);
+      }
       this.lastShuttleTarget = null;
     } else if (this.cameraLockTarget === 'shuttle') {
       const nowSeconds = performance.now() / 1000;
