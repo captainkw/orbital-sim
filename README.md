@@ -423,7 +423,8 @@ orbital-sim/
     - 3D GLB model of the ISS used as the docking target in the ISS Rendezvous preset.
     - URL: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/International%20Space%20Station%20(ISS)%20(A)
     - License: Public domain (NASA media are generally not copyrighted).
-
+    - Space Shuttle model source: NASA 3D Resources -- Space Shuttle (A).
+    - GitHub: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Space%20Shuttle%20(A)
 ### Three.js & WebGL
 
 13. **Dirksen, J.** (2018). *Learn Three.js* (3rd ed.). Packt Publishing.
