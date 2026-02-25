@@ -42,6 +42,10 @@ export class OrbitLine {
     this.geometry.setDrawRange(0, count);
   }
 
+  setVisible(visible: boolean) {
+    this.line.visible = visible;
+  }
+
   addTo(scene: THREE.Scene) {
     scene.add(this.line);
   }

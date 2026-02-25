@@ -23,6 +23,7 @@ export interface ManeuverSequence {
   version: number;
   name: string;
   initialState: StateVector;
+  issInitialState?: StateVector; // ISS start state for rendezvous presets
   maneuvers: ManeuverNode[];
   totalDuration: number;      // total sequence duration in seconds
 }

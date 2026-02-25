@@ -23,7 +23,7 @@ export class SceneManager {
     this.camera = new THREE.PerspectiveCamera(
       60,
       window.innerWidth / window.innerHeight,
-      0.01,
+      1e-6,
       10000
     );
     this.camera.position.set(0, 20, 0);
@@ -34,7 +34,9 @@ export class SceneManager {
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.1;
-    this.controls.minDistance = 2;
+    // Closest zoom: 20 m from camera target.
+    // SCALE = 1e-6 => 20 m * SCALE = 0.00002 scene units.
+    this.controls.minDistance = 0.00002;
     this.controls.maxDistance = 500;
     this.controls.listenToKeyEvents = undefined as any; // disable keyboard panning
 
@@ -63,7 +65,6 @@ export class SceneManager {
   };
 
   render() {
-    this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
 }

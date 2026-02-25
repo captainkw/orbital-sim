@@ -57,6 +57,22 @@ The real fun starts with transfer orbits. Select any transfer preset from the dr
 - **Orbit Raise 400 to 800 km** -- A short hop between two LEO altitudes. Great for seeing how even small altitude changes require precise burns.
 - **Orbit Lower 800 to 400 km** -- The reverse: a **Deorbit Burn** (retrograde) drops the perigee, followed by a **Circularization** burn at the lower altitude.
 
+### ISS Rendezvous & Docking
+
+The **ISS Rendezvous & Docking** preset demonstrates the multi-phase approach used by the Space Shuttle and Soyuz to dock with the International Space Station.
+
+The ISS is placed in a 408 km circular orbit ahead of the shuttle, which starts in a 350 km **phasing orbit**. At 350 km the shuttle completes orbits faster than ISS (shorter period: ~91.4 vs ~92.5 min), so it slowly catches up. After two phasing orbits the geometry is correct for the **Terminal Initiation (TI) burn** — a small prograde impulse that raises the apoapsis to 408 km. The shuttle coasts up the transfer ellipse and meets the ISS at apoapsis, where a **Circularization** burn matches its velocity to the ISS. The HUD shows **DIST** (distance to ISS) and **RVEL** (relative velocity) in real time.
+
+Docking is confirmed when the shuttle closes to within 500 m at under 2 m/s relative velocity.
+
+### Bi-Elliptic Transfer
+
+The **Bi-Elliptic LEO to GEO via 200 Mm** preset shows a three-burn trajectory: the spacecraft swings all the way out to 200,000 km before descending into GEO. It demonstrates the bi-elliptic concept — for sufficiently large orbit-ratio changes (r₂/r₁ > 11.94) this route uses less delta-V than a Hohmann transfer.
+
+### Reentry from ISS Orbit
+
+The **Reentry from ISS Orbit** preset fires a retrograde deorbit burn from 408 km, lowering the periapsis into the upper atmosphere. Watch atmospheric drag take over and the orbit decay until the crash overlay triggers.
+
 Once a transfer preset is loaded, drag the **From** and **To** sliders to experiment with different altitudes. The maneuver sequence regenerates live -- you can see the burn markers shift on the timeline and watch the delta-V requirements change.
 
 ### Crashing (and Trying Again)
@@ -318,7 +334,9 @@ orbital-sim/
 │   ├── textures/
 │   │   └── earth_daymap.jpg # NASA Blue Marble texture
 │   └── models/
-│       └── shuttle.stl      # Space Shuttle 3D model
+│       ├── shuttle.glb      # Space Shuttle 3D model
+│       └── iss/
+│           └── iss.glb      # International Space Station 3D model (NASA)
 ├── amplify.yml              # AWS Amplify build spec
 ├── vite.config.ts
 ├── tsconfig.json
@@ -404,9 +422,9 @@ orbital-sim/
 13. **NASA 3D Resources -- International Space Station (ISS) (A)**. NASA.
     - 3D GLB model of the ISS used as the docking target in the ISS Rendezvous preset.
     - URL: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/International%20Space%20Station%20(ISS)%20(A)
+    - License: Public domain (NASA media are generally not copyrighted).
     - Space Shuttle model source: NASA 3D Resources -- Space Shuttle (A).
     - GitHub: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Space%20Shuttle%20(A)
-    - License: Public domain (NASA media are generally not copyrighted).
 ### Three.js & WebGL
 
 13. **Dirksen, J.** (2018). *Learn Three.js* (3rd ed.). Packt Publishing.
