@@ -15,6 +15,7 @@ function applyInclination(state: StateVector, incDeg: number): StateVector {
 import { SceneManager } from './scene/scene-manager';
 import { Earth } from './scene/earth';
 import { SpacecraftMesh } from './scene/spacecraft';
+import { ISSTarget } from './scene/iss-target';
 import { OrbitLine } from './scene/orbit-line';
 import { setupLighting } from './scene/lighting';
 import { CelestialSphere } from './scene/celestial-sphere';
@@ -28,15 +29,21 @@ import { HUD } from './ui/hud';
 import { TimeControls } from './ui/time-controls';
 import { Timeline } from './ui/timeline';
 import { CrashOverlay } from './ui/crash-overlay';
+import { DockingOverlay } from './ui/docking-overlay';
 import { ManeuverExecutor } from './scripting/maneuver-executor';
 import { getPreset, buildHohmannPreset } from './scripting/presets';
 import { validateSequence, serializeSequence } from './scripting/maneuver-schema';
+
+const DOCKING_DIST = 500;    // metres — success threshold
+const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
 
 export class App {
   private sceneManager: SceneManager;
   private earth: Earth;
   private spacecraftMesh: SpacecraftMesh;
   private orbitLine: OrbitLine;
+  private issMesh: ISSTarget;
+  private issOrbitLine: OrbitLine;
   private celestialSphere: CelestialSphere;
   private inputManager: InputManager;
   private spacecraftControls: SpacecraftControls;
@@ -45,8 +52,11 @@ export class App {
   private timeline: Timeline;
   private maneuverExecutor: ManeuverExecutor;
   private crashOverlay: CrashOverlay;
+  private dockingOverlay: DockingOverlay;
 
   private state: SpacecraftState;
+  private issStateVector: StateVector | null = null;
+  private docked = false;
   private simTime = 0;
   private accumulator = 0;
   private lastFrameTime = 0;
@@ -83,6 +93,13 @@ export class App {
     this.orbitLine = new OrbitLine();
     this.orbitLine.addTo(this.sceneManager.scene);
 
+    this.issMesh = new ISSTarget();
+    this.issMesh.addTo(this.sceneManager.scene);
+
+    this.issOrbitLine = new OrbitLine(2000, 0xffaa00);
+    this.issOrbitLine.setVisible(false);
+    this.issOrbitLine.addTo(this.sceneManager.scene);
+
     // Celestial sphere (stars, sun, moon)
     this.celestialSphere = new CelestialSphere(this.sceneManager.scene, sunLight);
 
@@ -101,6 +118,14 @@ export class App {
     this.crashOverlay = new CrashOverlay();
     this.crashOverlay.setRestartCallback(() => {
       this.crashed = false;
+      const seq = getPreset(this.lastPresetName);
+      if (seq) this.loadSequence(seq);
+    });
+
+    // Docking overlay
+    this.dockingOverlay = new DockingOverlay();
+    this.dockingOverlay.setRestartCallback(() => {
+      this.docked = false;
       const seq = getPreset(this.lastPresetName);
       if (seq) this.loadSequence(seq);
     });
@@ -146,7 +171,7 @@ export class App {
 
     const getInclination = () => Number(incInput.value);
 
-    const transferPresets = new Set(['hohmann-leo-geo', 'hohmann-leo-meo', 'orbit-raise', 'orbit-lower']);
+    const transferPresets = new Set(['hohmann-leo-geo', 'hohmann-leo-meo', 'orbit-raise', 'orbit-lower', 'bielliptic-geo']);
 
     const showCircularSliders = (altKm?: number) => {
       circularDiv.style.display = 'flex';
@@ -173,6 +198,7 @@ export class App {
       'hohmann-leo-meo': [200, 20200],
       'orbit-raise': [400, 800],
       'orbit-lower': [800, 400],
+      'bielliptic-geo': [200, 35786],
     };
 
     // Preset selector
@@ -366,7 +392,7 @@ export class App {
   loadSequence(seq: ManeuverSequence) {
     this.currentSequence = seq;
 
-    // Reset state
+    // Reset spacecraft state
     this.state.stateVector = {
       position: [...seq.initialState.position],
       velocity: [...seq.initialState.velocity],
@@ -374,7 +400,26 @@ export class App {
     this.simTime = 0;
     this.accumulator = 0;
     this.crashed = false;
+    this.docked = false;
     this.crashOverlay.hide();
+    this.dockingOverlay.hide();
+
+    // ISS state — present only for rendezvous preset
+    if (seq.issInitialState) {
+      this.issStateVector = {
+        position: [...seq.issInitialState.position] as [number, number, number],
+        velocity: [...seq.issInitialState.velocity] as [number, number, number],
+      };
+      this.issMesh.setVisible(true);
+      // Compute and draw ISS orbit line once on load
+      const issOrbitPoints = predictOrbit(this.issStateVector);
+      this.issOrbitLine.updateFromPositions(issOrbitPoints);
+      this.issOrbitLine.setVisible(true);
+    } else {
+      this.issStateVector = null;
+      this.issMesh.setVisible(false);
+      this.issOrbitLine.setVisible(false);
+    }
 
     this.spacecraftControls.resetOrientation();
     this.maneuverExecutor.loadSequence(seq);
@@ -524,7 +569,7 @@ export class App {
       this.updateRecenterVisibility();
     }
 
-    if (!this.timeControls.paused && !this.crashed) {
+    if (!this.timeControls.paused && !this.crashed && !this.docked) {
       // Spacecraft keyboard controls (rotation uses frame dt)
       const manualThrust = this.spacecraftControls.update(this.state, frameDt);
 
@@ -545,7 +590,7 @@ export class App {
           thrust = manualThrust;
         }
 
-        // RK4 step
+        // RK4 step — spacecraft
         const s = this.state.stateVector;
         const newState = rk4Step(
           [s.position[0], s.position[1], s.position[2],
@@ -553,21 +598,52 @@ export class App {
           PHYSICS_DT,
           thrust
         );
-
         s.position = [newState[0], newState[1], newState[2]];
         s.velocity = [newState[3], newState[4], newState[5]];
+
+        // RK4 step — ISS (no thrust, pure Keplerian)
+        if (this.issStateVector) {
+          const iv = this.issStateVector;
+          const newISS = rk4Step(
+            [iv.position[0], iv.position[1], iv.position[2],
+             iv.velocity[0], iv.velocity[1], iv.velocity[2]],
+            PHYSICS_DT
+          );
+          iv.position = [newISS[0], newISS[1], newISS[2]];
+          iv.velocity = [newISS[3], newISS[4], newISS[5]];
+        }
 
         this.simTime += PHYSICS_DT;
         this.accumulator -= PHYSICS_DT;
         steps++;
 
-        // Check crash after each physics step
+        // Check crash
         const r = Math.sqrt(s.position[0] ** 2 + s.position[1] ** 2 + s.position[2] ** 2);
         const altitude = r - EARTH_RADIUS;
         if (this.crashOverlay.checkCrash(altitude)) {
           this.crashed = true;
           this.crashOverlay.show();
           break;
+        }
+
+        // Check docking
+        if (this.issStateVector && !this.docked) {
+          const iv = this.issStateVector;
+          const dx = s.position[0] - iv.position[0];
+          const dy = s.position[1] - iv.position[1];
+          const dz = s.position[2] - iv.position[2];
+          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          if (dist < DOCKING_DIST) {
+            const rvx = s.velocity[0] - iv.velocity[0];
+            const rvy = s.velocity[1] - iv.velocity[1];
+            const rvz = s.velocity[2] - iv.velocity[2];
+            const relVel = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
+            if (relVel < DOCKING_REL_VEL) {
+              this.docked = true;
+              this.dockingOverlay.show();
+              break;
+            }
+          }
         }
       }
     }
@@ -586,6 +662,10 @@ export class App {
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);
 
+    if (this.issStateVector) {
+      this.issMesh.updateFromState(this.issStateVector);
+    }
+
     // Update HUD
     const elements = stateToElements(this.state.stateVector);
     this.hud.update(
@@ -593,7 +673,8 @@ export class App {
       elements,
       this.simTime,
       this.timeControls.warpLevel,
-      this.timeControls.paused
+      this.timeControls.paused,
+      this.issStateVector
     );
 
     // Update timeline

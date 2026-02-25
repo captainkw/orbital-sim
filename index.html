@@ -229,11 +229,24 @@ Scroll Wheel .. Zoom In/Out</div>
     <button id="btn-recenter-shuttle">Recenter Shuttle View</button>
     <select id="preset-select">
       <option value="">-- Presets --</option>
-      <option value="leo-circular">LEO 600km Circular</option>
-      <option value="hohmann-leo-geo">Hohmann LEO → GEO</option>
-      <option value="hohmann-leo-meo">Hohmann LEO → MEO</option>
-      <option value="orbit-raise">Orbit Raise 400→800km</option>
-      <option value="orbit-lower">Orbit Lower 800→400km</option>
+      <optgroup label="Circular Orbits">
+        <option value="leo-circular">LEO 600km Circular</option>
+      </optgroup>
+      <optgroup label="Hohmann Transfers">
+        <option value="hohmann-leo-geo">Hohmann LEO → GEO</option>
+        <option value="hohmann-leo-meo">Hohmann LEO → MEO</option>
+        <option value="orbit-raise">Orbit Raise 400→800km</option>
+        <option value="orbit-lower">Orbit Lower 800→400km</option>
+      </optgroup>
+      <optgroup label="Rendezvous">
+        <option value="iss-rendezvous">ISS Rendezvous &amp; Docking</option>
+      </optgroup>
+      <optgroup label="Advanced Transfers">
+        <option value="bielliptic-geo">Bi-Elliptic LEO → GEO via 200 Mm</option>
+      </optgroup>
+      <optgroup label="Reentry">
+        <option value="reentry">Reentry from ISS Orbit</option>
+      </optgroup>
     </select>
     <button id="btn-import">Import JSON</button>
     <button id="btn-export">Export JSON</button>

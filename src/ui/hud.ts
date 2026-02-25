@@ -1,5 +1,5 @@
 import { EARTH_RADIUS } from '../constants';
-import { OrbitalElements, SpacecraftState, WarpLevel } from '../types';
+import { OrbitalElements, SpacecraftState, StateVector, WarpLevel } from '../types';
 import { dragMagnitude } from '../physics/atmosphere';
 
 export class HUD {
@@ -14,7 +14,8 @@ export class HUD {
     elements: OrbitalElements,
     simTime: number,
     warpLevel: WarpLevel,
-    paused: boolean
+    paused: boolean,
+    issState: StateVector | null = null
   ) {
     const [x, y, z] = state.stateVector.position;
     const [vx, vy, vz] = state.stateVector.velocity;
@@ -34,6 +35,22 @@ export class HUD {
 
     const deg = (rad: number) => (rad * 180 / Math.PI).toFixed(1);
 
+    let relNav = '';
+    if (issState) {
+      const [ix, iy, iz] = issState.position;
+      const [ivx, ivy, ivz] = issState.velocity;
+      const dx = x - ix, dy = y - iy, dz = z - iz;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const rvx = vx - ivx, rvy = vy - ivy, rvz = vz - ivz;
+      const relVel = Math.sqrt(rvx * rvx + rvy * rvy + rvz * rvz);
+
+      const distStr = dist < 1000
+        ? `${dist.toFixed(0)} m`
+        : `${(dist / 1000).toFixed(2)} km`;
+
+      relNav = `\n── ISS RENDEZVOUS ──\nDIST  ${distStr}\nRVEL  ${relVel.toFixed(1)} m/s`;
+    }
+
     this.el.textContent =
 `ALT   ${alt.toFixed(1)} km
 VEL   ${speed.toFixed(1)} m/s
@@ -48,6 +65,6 @@ TA    ${deg(elements.trueAnomaly)}°
 TIME  ${timeStr}
 WARP  ${warpLevel}x${paused ? ' [PAUSED]' : ''}
 THR   ${state.thrustActive ? 'ACTIVE' : 'OFF'}
-DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²`;
+DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²${relNav}`;
   }
 }
