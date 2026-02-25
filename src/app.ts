@@ -515,7 +515,7 @@ export class App {
     // Time controls
     this.timeControls.update();
 
-    if (this.introEarthTransitionQueued && (now - this.introStartTime) > 1.0) {
+    if (this.introEarthTransitionQueued && (now - this.introStartTime) > 2.0) {
       this.introEarthTransitionQueued = false;
       this.cameraLockTarget = 'earth';
       this.startEarthRecenterTransition(1.1);
