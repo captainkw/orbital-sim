@@ -36,6 +36,15 @@ import { validateSequence, serializeSequence } from './scripting/maneuver-schema
 
 const DOCKING_DIST = 500;    // metres — success threshold
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
+const MODEL_SCALE_FAR = 1.0;
+// Approximate true-size floor near docking range.
+const MODEL_SCALE_NEAR = 0.00005;
+const MODEL_SCALE_NEAR_DIST = 500 * SCALE;         // 0.5 km
+const MODEL_SCALE_FAR_DIST = 1_272_000 * SCALE;    // 1272 km
+const MODEL_SCALE_MID_DIST = 10_000 * SCALE;       // 10 km
+const MODEL_SCALE_MID = 0.0005;                    // already near true-size by 10 km
+const REF_LOCK_ENTER_DIST = 25_000 * SCALE;        // 25 km
+const REF_LOCK_EXIT_DIST = 30_000 * SCALE;         // hysteresis to avoid flicker
 
 export class App {
   private sceneManager: SceneManager;
@@ -57,6 +66,7 @@ export class App {
   private state: SpacecraftState;
   private issStateVector: StateVector | null = null;
   private docked = false;
+  private currentVisualScale = MODEL_SCALE_FAR;
   private simTime = 0;
   private accumulator = 0;
   private lastFrameTime = 0;
@@ -78,6 +88,17 @@ export class App {
   private lastShuttleTarget: THREE.Vector3 | null = null;
   private introEarthTransitionQueued = false;
   private introStartTime = 0;
+  private shuttleRefFrameLock = false;
+  private shuttleRefLocalOffset = new THREE.Vector3(0.55, 0.55, -1).normalize();
+  private shuttleRefDistance = this.defaultShuttleCameraDistance;
+  private controlsRotateEnabled = true;
+  private controlsPanEnabled = true;
+  private controlsDampingEnabled = true;
+  private controlsZoomEnabled = true;
+  private refLockPointerActive = false;
+  private refLockLastPointerX = 0;
+  private refLockLastPointerY = 0;
+  private refLockListenersAttached = false;
 
   constructor() {
     // Scene
@@ -108,6 +129,10 @@ export class App {
     this.spacecraftControls = new SpacecraftControls(this.inputManager);
     this.timeControls = new TimeControls(this.inputManager);
     new MobileControls(this.inputManager);
+    this.controlsRotateEnabled = this.sceneManager.controls.enableRotate;
+    this.controlsPanEnabled = this.sceneManager.controls.enablePan;
+    this.controlsDampingEnabled = this.sceneManager.controls.enableDamping;
+    this.controlsZoomEnabled = this.sceneManager.controls.enableZoom;
 
     // UI
     this.hud = new HUD();
@@ -354,6 +379,9 @@ export class App {
         this.cameraTransition = null;
         this.lastShuttleTarget = null;
       }
+      if (nextTarget !== 'shuttle' && this.shuttleRefFrameLock) {
+        this.exitRefLock();
+      }
       updateRecenterVisibility();
     });
     recenterShuttleBtn.addEventListener('click', () => {
@@ -367,6 +395,7 @@ export class App {
         this.cameraTransition = null;
         this.lastShuttleTarget = null;
         this.introEarthTransitionQueued = false;
+        if (this.shuttleRefFrameLock) this.exitRefLock();
         cameraTargetSelect.value = 'free';
         updateRecenterVisibility();
       }
@@ -401,6 +430,7 @@ export class App {
     this.accumulator = 0;
     this.crashed = false;
     this.docked = false;
+    if (this.shuttleRefFrameLock) this.exitRefLock();
     this.crashOverlay.hide();
     this.dockingOverlay.hide();
 
@@ -550,6 +580,170 @@ export class App {
     return { position, target };
   }
 
+  private updateAdaptiveModelScale() {
+    // Only apply adaptive scaling in shuttle lock mode.
+    // In Earth/free modes, keep model scale fixed to avoid apparent drifting shrink.
+    if (this.cameraLockTarget !== 'shuttle') {
+      this.spacecraftMesh.setVisualScale(MODEL_SCALE_FAR);
+      if (this.issStateVector) this.issMesh.setVisualScale(MODEL_SCALE_FAR);
+      return;
+    }
+
+    // Use OrbitControls zoom distance (camera-to-target) as the scaling driver.
+    const cameraDist = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
+    let visualScale: number;
+    if (cameraDist <= MODEL_SCALE_MID_DIST) {
+      // Near field: 0.5 km -> 10 km, stay close to true-size envelope.
+      const tNear = Math.max(0, Math.min(1,
+        (cameraDist - MODEL_SCALE_NEAR_DIST) / (MODEL_SCALE_MID_DIST - MODEL_SCALE_NEAR_DIST)
+      ));
+      visualScale = MODEL_SCALE_NEAR + (MODEL_SCALE_MID - MODEL_SCALE_NEAR) * tNear;
+    } else {
+      // Far field: 10 km -> 1272 km, scale up for readability.
+      const tFar = Math.max(0, Math.min(1,
+        (cameraDist - MODEL_SCALE_MID_DIST) / (MODEL_SCALE_FAR_DIST - MODEL_SCALE_MID_DIST)
+      ));
+      visualScale = MODEL_SCALE_MID + (MODEL_SCALE_FAR - MODEL_SCALE_MID) * tFar;
+    }
+    this.currentVisualScale = visualScale;
+
+    this.spacecraftMesh.setVisualScale(visualScale);
+    if (this.issStateVector) {
+      this.issMesh.setVisualScale(visualScale);
+    }
+  }
+
+  // --- Shuttle reference-frame lock: custom input handlers ---
+  // When locked, OrbitControls is fully disabled. We handle zoom (wheel)
+  // and orbit (pointer drag) ourselves so nothing can fight our camera placement.
+
+  private onRefLockWheel = (e: WheelEvent) => {
+    e.preventDefault();
+    const factor = 1 + e.deltaY * 0.001;
+    this.shuttleRefDistance = Math.max(
+      this.sceneManager.controls.minDistance,
+      Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+    );
+  };
+
+  private onRefLockPointerDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    this.refLockPointerActive = true;
+    this.refLockLastPointerX = e.clientX;
+    this.refLockLastPointerY = e.clientY;
+  };
+
+  private onRefLockPointerMove = (e: PointerEvent) => {
+    if (!this.refLockPointerActive) return;
+    const dx = e.clientX - this.refLockLastPointerX;
+    const dy = e.clientY - this.refLockLastPointerY;
+    this.refLockLastPointerX = e.clientX;
+    this.refLockLastPointerY = e.clientY;
+
+    const sensitivity = 0.005;
+    const yAxis = new THREE.Vector3(0, 1, 0);
+    this.shuttleRefLocalOffset.applyAxisAngle(yAxis, -dx * sensitivity);
+
+    const rightAxis = new THREE.Vector3()
+      .crossVectors(yAxis, this.shuttleRefLocalOffset)
+      .normalize();
+    if (rightAxis.lengthSq() > 0.001) {
+      this.shuttleRefLocalOffset.applyAxisAngle(rightAxis, -dy * sensitivity);
+    }
+    this.shuttleRefLocalOffset.normalize();
+  };
+
+  private onRefLockPointerUp = () => {
+    this.refLockPointerActive = false;
+  };
+
+  private attachRefLockListeners() {
+    if (this.refLockListenersAttached) return;
+    const el = this.sceneManager.renderer.domElement;
+    el.addEventListener('wheel', this.onRefLockWheel, { passive: false });
+    el.addEventListener('pointerdown', this.onRefLockPointerDown);
+    el.addEventListener('pointermove', this.onRefLockPointerMove);
+    el.addEventListener('pointerup', this.onRefLockPointerUp);
+    el.addEventListener('pointerleave', this.onRefLockPointerUp);
+    this.refLockListenersAttached = true;
+  }
+
+  private detachRefLockListeners() {
+    if (!this.refLockListenersAttached) return;
+    const el = this.sceneManager.renderer.domElement;
+    el.removeEventListener('wheel', this.onRefLockWheel);
+    el.removeEventListener('pointerdown', this.onRefLockPointerDown);
+    el.removeEventListener('pointermove', this.onRefLockPointerMove);
+    el.removeEventListener('pointerup', this.onRefLockPointerUp);
+    el.removeEventListener('pointerleave', this.onRefLockPointerUp);
+    this.refLockListenersAttached = false;
+  }
+
+  private exitRefLock() {
+    this.shuttleRefFrameLock = false;
+    this.detachRefLockListeners();
+    this.sceneManager.controls.enableRotate = this.controlsRotateEnabled;
+    this.sceneManager.controls.enablePan = this.controlsPanEnabled;
+    this.sceneManager.controls.enableZoom = this.controlsZoomEnabled;
+    this.sceneManager.controls.enableDamping = this.controlsDampingEnabled;
+  }
+
+  private updateShuttleRefFrameLock() {
+    if (this.cameraLockTarget !== 'shuttle') {
+      if (this.shuttleRefFrameLock) this.exitRefLock();
+      return;
+    }
+
+    if (this.shuttleRefFrameLock) {
+      if (this.shuttleRefDistance >= REF_LOCK_EXIT_DIST) {
+        this.exitRefLock();
+      }
+      return;
+    }
+
+    const zoomDist = this.sceneManager.camera.position.distanceTo(
+      this.sceneManager.controls.target
+    );
+    if (zoomDist <= REF_LOCK_ENTER_DIST) {
+      const shuttleTarget = this.getShuttleTarget();
+      const offsetWorld = this.sceneManager.camera.position.clone().sub(shuttleTarget);
+      const [qx, qy, qz, qw] = this.state.quaternion;
+      const shuttleQuat = new THREE.Quaternion(qx, qy, qz, qw);
+      const invQuat = shuttleQuat.clone().invert();
+      if (offsetWorld.lengthSq() > 1e-10) {
+        this.shuttleRefDistance = offsetWorld.length();
+        this.shuttleRefLocalOffset.copy(
+          offsetWorld.clone().normalize().applyQuaternion(invQuat)
+        );
+      }
+      this.shuttleRefFrameLock = true;
+
+      this.sceneManager.controls.enableRotate = false;
+      this.sceneManager.controls.enablePan = false;
+      this.sceneManager.controls.enableZoom = false;
+      this.sceneManager.controls.enableDamping = false;
+      this.attachRefLockListeners();
+    }
+  }
+
+  /** Write-only: positions the camera from stored shuttle-local state. */
+  private applyShuttleReferenceCamera(shuttleTarget: THREE.Vector3) {
+    const [qx, qy, qz, qw] = this.state.quaternion;
+    const shuttleQuat = new THREE.Quaternion(qx, qy, qz, qw);
+
+    const worldViewDir = this.shuttleRefLocalOffset.clone()
+      .applyQuaternion(shuttleQuat).normalize();
+    const worldUp = new THREE.Vector3(0, 1, 0)
+      .applyQuaternion(shuttleQuat).normalize();
+
+    this.sceneManager.camera.up.copy(worldUp);
+    this.sceneManager.camera.position.copy(
+      shuttleTarget.clone().addScaledVector(worldViewDir, this.shuttleRefDistance)
+    );
+    this.sceneManager.controls.target.copy(shuttleTarget);
+    this.sceneManager.camera.lookAt(shuttleTarget);
+  }
+
   private loop = () => {
     requestAnimationFrame(this.loop);
 
@@ -668,13 +862,17 @@ export class App {
 
     // Update HUD
     const elements = stateToElements(this.state.stateVector);
+    const zoomDistanceMeters =
+      this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target) / SCALE;
     this.hud.update(
       this.state,
       elements,
       this.simTime,
       this.timeControls.warpLevel,
       this.timeControls.paused,
-      this.issStateVector
+      this.issStateVector,
+      zoomDistanceMeters,
+      this.currentVisualScale
     );
 
     // Update timeline
@@ -707,6 +905,7 @@ export class App {
     } else if (this.cameraLockTarget === 'shuttle') {
       const nowSeconds = performance.now() / 1000;
       const shuttleTarget = this.getShuttleTarget();
+      this.updateShuttleRefFrameLock();
 
       if (this.cameraTransition) {
         const tRaw = (nowSeconds - this.cameraTransition.startTime) / this.cameraTransition.duration;
@@ -736,21 +935,37 @@ export class App {
       } else {
         // Preserve user orbit/pan/zoom. In lock mode we only translate camera+target
         // by the shuttle's movement so the current user view is respected.
-        if (this.lastShuttleTarget) {
-          const delta = shuttleTarget.clone().sub(this.lastShuttleTarget);
-          this.sceneManager.camera.position.add(delta);
-          this.sceneManager.controls.target.copy(shuttleTarget);
+        if (this.shuttleRefFrameLock) {
+          this.applyShuttleReferenceCamera(shuttleTarget);
         } else {
-          const delta = shuttleTarget.clone().sub(this.sceneManager.controls.target);
-          this.sceneManager.camera.position.add(delta);
-          this.sceneManager.controls.target.copy(shuttleTarget);
+          this.sceneManager.camera.up.set(0, 0, -1);
+          if (this.lastShuttleTarget) {
+            const delta = shuttleTarget.clone().sub(this.lastShuttleTarget);
+            this.sceneManager.camera.position.add(delta);
+            this.sceneManager.controls.target.copy(shuttleTarget);
+          } else {
+            const delta = shuttleTarget.clone().sub(this.sceneManager.controls.target);
+            this.sceneManager.camera.position.add(delta);
+            this.sceneManager.controls.target.copy(shuttleTarget);
+          }
         }
         this.lastShuttleTarget = shuttleTarget.clone();
         this.shuttleCameraDistance = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
       }
     } else {
+      if (this.shuttleRefFrameLock) this.exitRefLock();
+      this.sceneManager.camera.up.set(0, 0, -1);
       this.cameraTransition = null;
       this.lastShuttleTarget = null;
+    }
+
+    // Scale rendered models down as camera approaches the shuttle, so docking
+    // visuals become progressively closer to true scale at close range.
+    this.updateAdaptiveModelScale();
+
+    // When ref-frame locked we own the camera entirely; skip OrbitControls.
+    if (!this.shuttleRefFrameLock) {
+      this.sceneManager.controls.update();
     }
 
     // Render

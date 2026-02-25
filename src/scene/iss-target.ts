@@ -7,6 +7,7 @@ import { StateVector } from '../types';
 export class ISSTarget {
   readonly group: THREE.Group;
   private modelLoaded = false;
+  private visualScale = 1;
 
   constructor() {
     this.group = new THREE.Group();
@@ -27,12 +28,17 @@ export class ISSTarget {
         const box = new THREE.Box3().setFromObject(model);
         const center = new THREE.Vector3();
         box.getCenter(center);
-        model.position.sub(center);
-
         const size = new THREE.Vector3();
         box.getSize(size);
         const maxDim = Math.max(size.x, size.y, size.z);
-        model.scale.setScalar(maxDim > 0 ? 1.5 / maxDim : 1.0);
+        const scaleFactor = maxDim > 0 ? 1.5 / maxDim : 1.0;
+        model.scale.setScalar(scaleFactor);
+        // Keep mesh origin aligned to ISS physics position after scaling.
+        model.position.set(
+          -center.x * scaleFactor,
+          -center.y * scaleFactor,
+          -center.z * scaleFactor
+        );
 
         // Emissive tint so ISS is clearly visible against space
         model.traverse((child) => {
@@ -94,6 +100,16 @@ export class ISSTarget {
 
   setVisible(visible: boolean) {
     this.group.visible = visible;
+  }
+
+  /**
+   * Adjust rendered ISS size without affecting orbital position.
+   */
+  setVisualScale(scale: number) {
+    const clamped = Math.max(0.00001, scale);
+    if (Math.abs(clamped - this.visualScale) < 1e-8) return;
+    this.visualScale = clamped;
+    this.group.scale.setScalar(clamped);
   }
 
   addTo(scene: THREE.Scene) {

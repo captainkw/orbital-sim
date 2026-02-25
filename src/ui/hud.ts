@@ -15,7 +15,9 @@ export class HUD {
     simTime: number,
     warpLevel: WarpLevel,
     paused: boolean,
-    issState: StateVector | null = null
+    issState: StateVector | null = null,
+    zoomDistanceMeters?: number,
+    modelScaleFactor?: number
   ) {
     const [x, y, z] = state.stateVector.position;
     const [vx, vy, vz] = state.stateVector.velocity;
@@ -51,6 +53,19 @@ export class HUD {
       relNav = `\n── ISS RENDEZVOUS ──\nDIST  ${distStr}\nRVEL  ${relVel.toFixed(1)} m/s`;
     }
 
+    let zoomLine = '';
+    if (zoomDistanceMeters !== undefined) {
+      zoomLine = zoomDistanceMeters < 1000
+        ? `ZOOM  ${zoomDistanceMeters.toFixed(0)} m`
+        : `ZOOM  ${(zoomDistanceMeters / 1000).toFixed(2)} km`;
+    }
+
+    let scaleLine = '';
+    if (modelScaleFactor !== undefined) {
+      const isActualSize = modelScaleFactor <= 0.0000505;
+      scaleLine = `SCALEF ${modelScaleFactor.toFixed(6)}${isActualSize ? ' (ACTUAL SIZE)' : ''}`;
+    }
+
     this.el.textContent =
 `ALT   ${alt.toFixed(1)} km
 VEL   ${speed.toFixed(1)} m/s
@@ -65,6 +80,8 @@ TA    ${deg(elements.trueAnomaly)}°
 TIME  ${timeStr}
 WARP  ${warpLevel}x${paused ? ' [PAUSED]' : ''}
 THR   ${state.thrustActive ? 'ACTIVE' : 'OFF'}
-DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²${relNav}`;
+DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²
+${zoomLine}
+${scaleLine}${relNav}`;
   }
 }

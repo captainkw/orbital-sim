@@ -164,7 +164,15 @@ export function issRendezvousPreset(): ManeuverSequence {
   };
 
   const burnDuration = 30;
-  const burnStart2   = tiBurnTime + transferTime;
+  const mccDuration = 20;
+  // Center both burns at their orbit nodes. The phase-angle calculation assumes
+  // the effective ΔV happens at periapsis (TI) and apoapsis (circ), which
+  // corresponds to the midpoint of each finite-duration burn. Starting each
+  // burn burnDuration/2 seconds early achieves this alignment.
+  const tiBurnStart = tiBurnTime - burnDuration / 2;
+  const burnStart2  = tiBurnTime + transferTime - burnDuration / 2;
+  const mcc1Start = tiBurnTime + transferTime * 0.35 - mccDuration / 2;
+  const mcc2Start = tiBurnTime + transferTime * 0.70 - mccDuration / 2;
   const totalDuration = burnStart2 + burnDuration + T_iss * 1.5;
 
   return {
@@ -178,9 +186,21 @@ export function issRendezvousPreset(): ManeuverSequence {
     maneuvers: [
       {
         id: 'TI Burn',
-        startTime: tiBurnTime,
+        startTime: tiBurnStart,
         deltaV: [dv1, 0, 0],
         duration: burnDuration,
+      },
+      {
+        id: 'MCC-1',
+        startTime: mcc1Start,
+        deltaV: [0.25, 0, 0],
+        duration: mccDuration,
+      },
+      {
+        id: 'MCC-2',
+        startTime: mcc2Start,
+        deltaV: [-0.28, 0, 0],
+        duration: mccDuration,
       },
       {
         id: 'Circularization',

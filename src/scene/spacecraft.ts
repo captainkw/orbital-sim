@@ -9,6 +9,7 @@ export class SpacecraftMesh {
   private shuttleGroup: THREE.Group;
   readonly thrustArrow: THREE.ArrowHelper;
   private readonly shuttleDoorOpenAngleX = THREE.MathUtils.degToRad(30);
+  private visualScale = 1;
 
   constructor() {
     this.group = new THREE.Group();
@@ -56,6 +57,17 @@ export class SpacecraftMesh {
 
   addTo(scene: THREE.Scene) {
     scene.add(this.group);
+  }
+
+  /**
+   * Adjust only the rendered shuttle model scale (not orbital position).
+   * Used to make close-range rendezvous visuals more true-to-scale.
+   */
+  setVisualScale(scale: number) {
+    const clamped = Math.max(0.00001, scale);
+    if (Math.abs(clamped - this.visualScale) < 1e-8) return;
+    this.visualScale = clamped;
+    this.shuttleGroup.scale.setScalar(clamped);
   }
 
   private loadShuttleComposite() {
