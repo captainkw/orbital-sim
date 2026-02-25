@@ -146,16 +146,18 @@ export function issRendezvousPreset(): ManeuverSequence {
   const requiredLeadAtTI = Math.PI - issTransferAngle;
   const phi_iss = requiredLeadAtTI + phaseGain;     // radians
 
-  // ISS initial state: equatorial orbit at r_iss, phi_iss ahead of shuttle
+  // ISS initial state: equatorial circular orbit at r_iss, phi_iss ahead of shuttle.
+  // Coordinate system: pos=[r,0,0], vel=[0,0,-v] at φ=0, so tangential velocity is
+  // [-v·sin(φ), 0, -v·cos(φ)] — note the negative sign on the X component.
   const v_iss = Math.sqrt(mu / r_iss);
   const issInitialState: StateVector = {
     position: [
-      r_iss * Math.cos(phi_iss),
+       r_iss * Math.cos(phi_iss),
       0,
       -r_iss * Math.sin(phi_iss),
     ] as [number, number, number],
     velocity: [
-      v_iss * Math.sin(phi_iss),
+      -v_iss * Math.sin(phi_iss),
       0,
       -v_iss * Math.cos(phi_iss),
     ] as [number, number, number],
