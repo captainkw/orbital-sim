@@ -401,6 +401,12 @@ orbital-sim/
     - URL: https://visibleearth.nasa.gov/collection/1484/blue-marble
     - License: Public domain (NASA media are generally not copyrighted).
 
+13. **NASA 3D Resources -- International Space Station (ISS) (A)**. NASA.
+    - 3D GLB model of the ISS used as the docking target in the ISS Rendezvous preset.
+    - URL: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/International%20Space%20Station%20(ISS)%20(A)
+    - Space Shuttle model source: NASA 3D Resources -- Space Shuttle (A).
+    - GitHub: https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models/Space%20Shuttle%20(A)
+    - License: Public domain (NASA media are generally not copyrighted).
 ### Three.js & WebGL
 
 13. **Dirksen, J.** (2018). *Learn Three.js* (3rd ed.). Packt Publishing.
