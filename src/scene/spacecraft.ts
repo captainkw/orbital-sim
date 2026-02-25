@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { SCALE } from '../constants';
 import { SpacecraftState } from '../types';
 
@@ -7,55 +8,14 @@ export class SpacecraftMesh {
   readonly group: THREE.Group;
   private shuttleGroup: THREE.Group;
   readonly thrustArrow: THREE.ArrowHelper;
+  private readonly shuttleDoorOpenAngleX = THREE.MathUtils.degToRad(30);
 
   constructor() {
     this.group = new THREE.Group();
     this.shuttleGroup = new THREE.Group();
     this.group.add(this.shuttleGroup);
 
-    // Load the STL shuttle model
-    const loader = new STLLoader();
-    loader.load(`${import.meta.env.BASE_URL}models/shuttle.stl`, (geometry) => {
-      // Center the geometry on its bounding box
-      geometry.computeBoundingBox();
-      const box = geometry.boundingBox!;
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      geometry.translate(-center.x, -center.y, -center.z);
-
-      // Compute size to normalize scale
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const maxDim = Math.max(size.x, size.y, size.z);
-
-      // Scale for shuttle controlled here
-      const desiredSize = 1.0;
-      const scaleFactor = desiredSize / maxDim;
-
-      const mat = new THREE.MeshPhongMaterial({
-        color: 0xeeeeee,
-        emissive: 0x111111,
-        shininess: 30,
-        flatShading: true,
-      });
-
-      const mesh = new THREE.Mesh(geometry, mat);
-      mesh.scale.setScalar(scaleFactor);
-
-      // Orient so the nose points along -Z (local forward)
-      // Pitch down 90° (nose down), then roll left 90°
-      mesh.rotation.order = 'YXZ';
-      mesh.rotation.x = -Math.PI / 2; // pitch down 90°
-      mesh.rotation.z = -Math.PI / 2; // roll left 90°
-
-      // Offset upward so the shuttle sits above the orbit path
-      mesh.position.y = 0.175;
-
-      this.shuttleGroup.add(mesh);
-    });
-
-    // Axes helper for dev
-    this.group.add(new THREE.AxesHelper(0.5));
+    this.loadShuttleComposite();
 
     // Thrust arrow (initially hidden)
     this.thrustArrow = new THREE.ArrowHelper(
@@ -96,5 +56,180 @@ export class SpacecraftMesh {
 
   addTo(scene: THREE.Scene) {
     scene.add(this.group);
+  }
+
+  private loadShuttleComposite() {
+    // Base hull uses Draco compression.
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
+
+    const baseLoader = new GLTFLoader();
+    baseLoader.setDRACOLoader(dracoLoader);
+
+    const basePath = `${import.meta.env.BASE_URL}models/shuttle.glb`;
+    baseLoader.load(
+      basePath,
+      (gltf) => {
+        const baseModel = gltf.scene;
+
+        // Compute alignment from the base hull in model-native coordinates.
+        const box = new THREE.Box3().setFromObject(baseModel);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const shuttleLength = size.x;
+        const shuttleWidth = size.y;
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const desiredSize = 1.0;
+        const scaleFactor = maxDim > 0 ? desiredSize / maxDim : 1.0;
+
+        this.applySharedShuttleTransform(baseModel, center, scaleFactor);
+        this.tuneModelMaterials(baseModel);
+        this.shuttleGroup.add(baseModel);
+
+        // NASA part files exported as separate meshes.
+        // Doors can be articulated (opened), while eng/rcs need explicit
+        // placement offsets in this scene's shuttle frame.
+        const partLoader = new GLTFLoader();
+        const partFiles = [
+          'shuttle-door-prt.glb',
+          'shuttle-door-stb.glb',
+          'shuttle-eng.glb',
+          'shuttle-rcs.glb',
+        ];
+
+        partFiles.forEach((partFile) => {
+          partLoader.load(
+            `${import.meta.env.BASE_URL}models/${partFile}`,
+            (partGltf) => {
+              const partModel = partGltf.scene;
+              this.tuneModelMaterials(partModel);
+
+              if (partFile === 'shuttle-door-prt.glb') {
+                this.addDoorPart(
+                  partModel,
+                  center,
+                  scaleFactor,
+                  'prt',
+                  new THREE.Vector3(215, 50, 0) 
+                );  // shuttleWidth
+              } else if (partFile === 'shuttle-door-stb.glb') {
+                this.addDoorPart(
+                  partModel,
+                  center,
+                  scaleFactor,
+                  'stb',
+                  new THREE.Vector3(-215, 50, 0)
+                );
+              } else if (partFile === 'shuttle-eng.glb') {
+                // Use 3 engine instances at the aft end with slight spacing.
+                const engineOffsets = [
+                  new THREE.Vector3(-510, 0.055 * shuttleWidth, -45),
+                  new THREE.Vector3(-510, 0, 45),
+                  new THREE.Vector3(-510, -0.055 * shuttleWidth, -45),
+                ];
+                engineOffsets.forEach((offset, idx) => {
+                  const instance = idx === 0 ? partModel : partModel.clone(true);
+                  this.addAttachedPart(instance, center, scaleFactor, offset);
+                });
+              } else if (partFile === 'shuttle-rcs.glb') {
+                // Use 2 RCS instances at the aft upper section.
+                const rcsOffsets = [
+                  new THREE.Vector3(-510, 0.095 * shuttleWidth, 90),
+                  new THREE.Vector3(-510, -0.095 * shuttleWidth, 90),
+                ];
+                rcsOffsets.forEach((offset, idx) => {
+                  const instance = idx === 0 ? partModel : partModel.clone(true);
+                  this.addAttachedPart(instance, center, scaleFactor, offset);
+                });
+              } else {
+                this.applySharedShuttleTransform(partModel, center, scaleFactor);
+                this.shuttleGroup.add(partModel);
+              }
+            },
+            undefined,
+            (error) => {
+              console.warn(`Optional shuttle part failed to load: ${partFile}`, error);
+            }
+          );
+        });
+
+        dracoLoader.dispose();
+      },
+      undefined,
+      (error) => {
+        console.error('Failed to load shuttle GLB:', error);
+        dracoLoader.dispose();
+      }
+    );
+  }
+
+  private applySharedShuttleTransform(
+    model: THREE.Object3D,
+    baseCenter: THREE.Vector3,
+    scaleFactor: number
+  ) {
+    model.scale.setScalar(scaleFactor);
+    model.position.set(
+      -baseCenter.x * scaleFactor,
+      -baseCenter.y * scaleFactor,
+      -baseCenter.z * scaleFactor,
+    );
+
+    // Keep orientation consistent with existing control/camera assumptions.
+    model.rotation.order = 'YXZ';
+    model.rotation.x = -Math.PI / 2;
+    model.rotation.z = -Math.PI / 2;
+  }
+
+  private addAttachedPart(
+    partModel: THREE.Object3D,
+    baseCenter: THREE.Vector3,
+    scaleFactor: number,
+    nativeOffset: THREE.Vector3
+  ) {
+    const anchor = new THREE.Group();
+    this.applySharedShuttleTransform(anchor, baseCenter, scaleFactor);
+    partModel.position.copy(nativeOffset);
+    anchor.add(partModel);
+    this.shuttleGroup.add(anchor);
+  }
+
+  private addDoorPart(
+    partModel: THREE.Object3D,
+    baseCenter: THREE.Vector3,
+    scaleFactor: number,
+    side: 'prt' | 'stb',
+    breakoutOffset: THREE.Vector3
+  ) {
+    const doorAnchor = new THREE.Group();
+    this.applySharedShuttleTransform(doorAnchor, baseCenter, scaleFactor);
+    doorAnchor.position.addScaledVector(breakoutOffset, scaleFactor);
+    doorAnchor.add(partModel);
+
+    // Open doors by rotating around local X in opposite directions so each
+    // moves away from centerline.
+    const sign = side === 'prt' ? 1 : -1;
+    const extraOpen = THREE.MathUtils.degToRad(side === 'prt' ? -30 : 30);
+    doorAnchor.rotateX(sign * this.shuttleDoorOpenAngleX + Math.PI + extraOpen);
+
+    this.shuttleGroup.add(doorAnchor);
+  }
+
+  private tuneModelMaterials(model: THREE.Object3D) {
+    model.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach((m) => {
+          if (m instanceof THREE.MeshStandardMaterial) {
+            m.emissive.setHex(0x221f1a);
+            m.emissiveIntensity = 0.4;
+          }
+        });
+      }
+    });
   }
 }
