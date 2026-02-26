@@ -926,6 +926,13 @@ export class App {
       }
     }
 
+    // Keep orbit lines glued to their body between prediction ticks so
+    // they don't visually lag at close zoom.
+    this.orbitLine.trackBody(this.state.stateVector.position);
+    if (this.issStateVector) {
+      this.issOrbitLine.trackBody(this.issStateVector.position);
+    }
+
     // Update celestial sphere
     this.celestialSphere.update(this.simTime, 172);
 
