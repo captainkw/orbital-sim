@@ -150,7 +150,8 @@ export class App {
     // Docking overlay
     this.dockingOverlay = new DockingOverlay();
     this.dockingOverlay.setContinueCallback(() => {
-      // Dismiss overlay, enter dockedFlying state — sim keeps running
+      // Dismiss overlay, enter dockedFlying state — clear docked so physics loop runs
+      this.docked = false;
       this.dockedFlying = true;
       this.dockingOverlay.showUndockButton();
     });
