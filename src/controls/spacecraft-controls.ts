@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { InputManager } from './input-manager';
-import { ROTATION_RATE, THRUST_ACCEL } from '../constants';
+import { ROTATION_RATE } from '../constants';
 import { SpacecraftState } from '../types';
 
 export class SpacecraftControls {
@@ -24,7 +24,7 @@ export class SpacecraftControls {
    * @param dt Real delta time for rotation (seconds)
    * @returns Thrust acceleration vector in ECI frame (m/s^2), or [0,0,0]
    */
-  update(state: SpacecraftState, dt: number): [number, number, number] {
+  update(state: SpacecraftState, dt: number, thrustAccel = 10.0): [number, number, number] {
     const [px, py, pz] = state.stateVector.position;
     const [vx, vy, vz] = state.stateVector.velocity;
 
@@ -39,14 +39,14 @@ export class SpacecraftControls {
     // Guard against degenerate velocity vectors to avoid NaNs.
     if (speed < 1e-6) {
       state.quaternion = [this.lastQuat.x, this.lastQuat.y, this.lastQuat.z, this.lastQuat.w];
-      return this.applyThrust(state, this.lastQuat);
+      return this.applyThrust(state, this.lastQuat, thrustAccel);
     }
 
     // Cross-track: radial × velocity (orbit normal direction)
     const crossTrack = new THREE.Vector3().crossVectors(radial, vel);
     if (crossTrack.lengthSq() < 1e-12) {
       state.quaternion = [this.lastQuat.x, this.lastQuat.y, this.lastQuat.z, this.lastQuat.w];
-      return this.applyThrust(state, this.lastQuat);
+      return this.applyThrust(state, this.lastQuat, thrustAccel);
     }
     crossTrack.normalize();
 
@@ -100,28 +100,28 @@ export class SpacecraftControls {
     this.lastQuat.copy(finalQuat);
     state.quaternion = [finalQuat.x, finalQuat.y, finalQuat.z, finalQuat.w];
 
-    return this.applyThrust(state, finalQuat);
+    return this.applyThrust(state, finalQuat, thrustAccel);
   }
 
-  private applyThrust(state: SpacecraftState, quat: THREE.Quaternion): [number, number, number] {
+  private applyThrust(state: SpacecraftState, quat: THREE.Quaternion, thrustAccel: number): [number, number, number] {
     // --- Thrust (WASD) ---
     let thrustLocal = new THREE.Vector3(0, 0, 0);
     let thrusting = false;
 
     if (this.input.isDown('KeyW')) {
-      thrustLocal.z += THRUST_ACCEL; // Forward (+Z = prograde)
+      thrustLocal.z += thrustAccel; // Forward (+Z = prograde)
       thrusting = true;
     }
     if (this.input.isDown('KeyS')) {
-      thrustLocal.z -= THRUST_ACCEL; // Backward (-Z = retrograde)
+      thrustLocal.z -= thrustAccel; // Backward (-Z = retrograde)
       thrusting = true;
     }
     if (this.input.isDown('KeyA')) {
-      thrustLocal.x += THRUST_ACCEL; // Left/port (+X)
+      thrustLocal.x += thrustAccel; // Left/port (+X)
       thrusting = true;
     }
     if (this.input.isDown('KeyD')) {
-      thrustLocal.x -= THRUST_ACCEL; // Right/starboard (-X)
+      thrustLocal.x -= thrustAccel; // Right/starboard (-X)
       thrusting = true;
     }
 
