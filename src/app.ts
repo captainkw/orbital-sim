@@ -71,7 +71,6 @@ export class App {
   private simTime = 0;
   private accumulator = 0;
   private lastFrameTime = 0;
-  private orbitUpdateTimer = 0;
   private currentSequence: ManeuverSequence | null = null;
   private crashed = false;
   private lastPresetName = 'leo-circular';
@@ -911,26 +910,11 @@ export class App {
       }
     }
 
-    // Update orbit prediction — interval scales with warp so lines feel smooth
-    // at low warp without burning CPU at high warp.
-    const warp = this.timeControls.warpLevel;
-    const orbitUpdateInterval = warp <= 10 ? 0.05 : warp <= 100 ? 0.15 : 0.5;
-    this.orbitUpdateTimer += frameDt;
-    if (this.orbitUpdateTimer > orbitUpdateInterval) {
-      this.orbitUpdateTimer = 0;
-      const predicted = predictOrbit(this.state.stateVector);
-      this.orbitLine.updateFromPositions(predicted);
-      if (this.issStateVector) {
-        const isspredicted = predictOrbit(this.issStateVector);
-        this.issOrbitLine.updateFromPositions(isspredicted);
-      }
-    }
-
-    // Keep orbit lines glued to their body between prediction ticks so
-    // they don't visually lag at close zoom.
-    this.orbitLine.trackBody(this.state.stateVector.position);
+    // Orbit lines: analytical ellipse from current Keplerian elements — runs
+    // every frame, costs only trig (no RK4), never flickers.
+    this.orbitLine.updateFromPositions(predictOrbit(this.state.stateVector));
     if (this.issStateVector) {
-      this.issOrbitLine.trackBody(this.issStateVector.position);
+      this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
     }
 
     // Update celestial sphere
