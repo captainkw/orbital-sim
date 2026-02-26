@@ -36,6 +36,10 @@ import { validateSequence, serializeSequence } from './scripting/maneuver-schema
 
 const DOCKING_DIST = 500;    // metres — success threshold
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
+const UNDOCK_REDOCK_DELAY = 120; // sim seconds before docking is allowed again
+const UNDOCK_SEPARATION_DIST = 700; // metres initial positional separation
+const UNDOCK_SEPARATION_DV = 0.5; // m/s gentle push apart
+const UNDOCK_REARM_DIST = 2500; // metres required before docking can re-arm
 const MODEL_SCALE_FAR = 1.0;
 // Approximate true-size floor near docking range.
 const MODEL_SCALE_NEAR = 0.00005;
@@ -67,11 +71,12 @@ export class App {
   private issStateVector: StateVector | null = null;
   private docked = false;
   private dockedFlying = false; // docked & overlay dismissed — flying together
+  private dockingDisabledUntil = 0;
+  private redockNeedsSeparation = false;
   private currentVisualScale = MODEL_SCALE_FAR;
   private simTime = 0;
   private accumulator = 0;
   private lastFrameTime = 0;
-  private orbitUpdateTimer = 0;
   private currentSequence: ManeuverSequence | null = null;
   private crashed = false;
   private lastPresetName = 'leo-circular';
@@ -111,13 +116,13 @@ export class App {
     this.spacecraftMesh = new SpacecraftMesh();
     this.spacecraftMesh.addTo(this.sceneManager.scene);
 
-    this.orbitLine = new OrbitLine();
+    this.orbitLine = new OrbitLine(1200, 0x00aaff, 2);  // shuttle: higher renderOrder
     this.orbitLine.addTo(this.sceneManager.scene);
 
     this.issMesh = new ISSTarget();
     this.issMesh.addTo(this.sceneManager.scene);
 
-    this.issOrbitLine = new OrbitLine(2000, 0xffaa00);
+    this.issOrbitLine = new OrbitLine(1200, 0xffaa00, 1); // ISS: lower renderOrder → always underneath
     this.issOrbitLine.setVisible(false);
     this.issOrbitLine.addTo(this.sceneManager.scene);
 
@@ -445,6 +450,8 @@ export class App {
     this.crashed = false;
     this.docked = false;
     this.dockedFlying = false;
+    this.dockingDisabledUntil = 0;
+    this.redockNeedsSeparation = false;
     if (this.shuttleRefFrameLock) this.exitRefLock();
     this.crashOverlay.hide();
     this.dockingOverlay.hide();
@@ -473,8 +480,41 @@ export class App {
   }
 
   private undock() {
+    const s = this.state.stateVector;
+    const iv = this.issStateVector;
+
+    if (iv) {
+      // Choose a stable separation direction from shuttle body-right axis.
+      const [qx, qy, qz, qw] = this.state.quaternion;
+      const sep = new THREE.Vector3(1, 0, 0)
+        .applyQuaternion(new THREE.Quaternion(qx, qy, qz, qw))
+        .normalize();
+
+      // Start slightly separated so we don't instantly satisfy docking criteria.
+      s.position = [
+        s.position[0] + sep.x * UNDOCK_SEPARATION_DIST,
+        s.position[1] + sep.y * UNDOCK_SEPARATION_DIST,
+        s.position[2] + sep.z * UNDOCK_SEPARATION_DIST,
+      ];
+
+      // Add a small relative push; ISS receives opposite momentum-scaled response.
+      s.velocity = [
+        s.velocity[0] + sep.x * UNDOCK_SEPARATION_DV,
+        s.velocity[1] + sep.y * UNDOCK_SEPARATION_DV,
+        s.velocity[2] + sep.z * UNDOCK_SEPARATION_DV,
+      ];
+      const issDv = UNDOCK_SEPARATION_DV * (SHUTTLE_MASS / ISS_MASS);
+      iv.velocity = [
+        iv.velocity[0] - sep.x * issDv,
+        iv.velocity[1] - sep.y * issDv,
+        iv.velocity[2] - sep.z * issDv,
+      ];
+    }
+
     this.docked = false;
     this.dockedFlying = false;
+    this.dockingDisabledUntil = this.simTime + UNDOCK_REDOCK_DELAY;
+    this.redockNeedsSeparation = true;
     this.dockingOverlay.hideUndockButton();
     // ISS inherits the current combined velocity — it continues on its own orbit.
     // Shuttle keeps the same position/velocity; they naturally separate over time.
@@ -644,9 +684,11 @@ export class App {
   private onRefLockWheel = (e: WheelEvent) => {
     e.preventDefault();
     const factor = 1 + e.deltaY * 0.001;
+    // No upper cap — let shuttleRefDistance exceed REF_LOCK_EXIT_DIST so the
+    // exit condition in updateShuttleRefFrameLock fires naturally.
     this.shuttleRefDistance = Math.max(
       this.sceneManager.controls.minDistance,
-      Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+      this.shuttleRefDistance * factor
     );
   };
 
@@ -674,9 +716,10 @@ export class App {
       if (this.refLockLastPinchDist > 0 && pinchDist > 0) {
         // Spreading fingers zooms in (smaller distance), pinching zooms out.
         const factor = this.refLockLastPinchDist / pinchDist;
+        // No upper cap — allow exceeding REF_LOCK_EXIT_DIST to trigger lock exit.
         this.shuttleRefDistance = Math.max(
           this.sceneManager.controls.minDistance,
-          Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+          this.shuttleRefDistance * factor
         );
       }
       this.refLockLastPinchDist = pinchDist;
@@ -746,6 +789,10 @@ export class App {
     }
 
     if (this.shuttleRefFrameLock) {
+      // Use shuttleRefDistance (user zoom state) not live camera↔shuttle distance.
+      // At high warp the shuttle leaps many km per frame so the camera will appear
+      // far from the new shuttle position even though the user hasn't moved —
+      // measuring live distance here would cause spurious lock exits.
       if (this.shuttleRefDistance >= REF_LOCK_EXIT_DIST) {
         this.exitRefLock();
       }
@@ -887,13 +934,25 @@ export class App {
         }
 
         // Check docking (only when not already docked)
-        if (this.issStateVector && !this.docked && !this.dockedFlying) {
+        if (this.issStateVector) {
           const iv = this.issStateVector;
           const dx = s.position[0] - iv.position[0];
           const dy = s.position[1] - iv.position[1];
           const dz = s.position[2] - iv.position[2];
           const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          if (dist < DOCKING_DIST) {
+
+          // After an undock, require meaningful separation before re-arming docking.
+          if (this.redockNeedsSeparation && dist > UNDOCK_REARM_DIST) {
+            this.redockNeedsSeparation = false;
+          }
+
+          if (
+            !this.docked &&
+            !this.dockedFlying &&
+            !this.redockNeedsSeparation &&
+            this.simTime >= this.dockingDisabledUntil &&
+            dist < DOCKING_DIST
+          ) {
             const rvx = s.velocity[0] - iv.velocity[0];
             const rvy = s.velocity[1] - iv.velocity[1];
             const rvz = s.velocity[2] - iv.velocity[2];
@@ -908,12 +967,11 @@ export class App {
       }
     }
 
-    // Update orbit prediction periodically
-    this.orbitUpdateTimer += frameDt;
-    if (this.orbitUpdateTimer > 0.5) {
-      this.orbitUpdateTimer = 0;
-      const predicted = predictOrbit(this.state.stateVector);
-      this.orbitLine.updateFromPositions(predicted);
+    // Orbit lines: analytical ellipse from current Keplerian elements — runs
+    // every frame, costs only trig (no RK4), never flickers.
+    this.orbitLine.updateFromPositions(predictOrbit(this.state.stateVector));
+    if (this.issStateVector) {
+      this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
     }
 
     // Update celestial sphere
