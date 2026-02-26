@@ -8,7 +8,7 @@ import { rk4Step } from './integrator';
  */
 export function predictOrbit(
   sv: StateVector,
-  numPoints = 500,
+  numPoints = 1200,
   dt = 10.0
 ): [number, number, number][] {
   const points: [number, number, number][] = [];

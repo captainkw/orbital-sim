@@ -6,7 +6,7 @@ export class OrbitLine {
   private geometry: THREE.BufferGeometry;
   private maxPoints: number;
 
-  constructor(maxPoints = 2000, color = 0x00aaff) {
+  constructor(maxPoints = 2000, color = 0x00aaff, renderOrder = 1) {
     this.maxPoints = maxPoints;
     this.geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(maxPoints * 3);
@@ -21,7 +21,7 @@ export class OrbitLine {
     });
 
     this.line = new THREE.Line(this.geometry, material);
-    this.line.renderOrder = 1;
+    this.line.renderOrder = renderOrder;
     this.line.frustumCulled = false;
   }
 

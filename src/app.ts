@@ -111,13 +111,13 @@ export class App {
     this.spacecraftMesh = new SpacecraftMesh();
     this.spacecraftMesh.addTo(this.sceneManager.scene);
 
-    this.orbitLine = new OrbitLine();
+    this.orbitLine = new OrbitLine(1200, 0x00aaff, 2);  // shuttle: higher renderOrder
     this.orbitLine.addTo(this.sceneManager.scene);
 
     this.issMesh = new ISSTarget();
     this.issMesh.addTo(this.sceneManager.scene);
 
-    this.issOrbitLine = new OrbitLine(2000, 0xffaa00);
+    this.issOrbitLine = new OrbitLine(1200, 0xffaa00, 1); // ISS: lower renderOrder → always underneath
     this.issOrbitLine.setVisible(false);
     this.issOrbitLine.addTo(this.sceneManager.scene);
 
@@ -911,26 +911,19 @@ export class App {
       }
     }
 
-    // Update orbit prediction periodically
+    // Update orbit prediction — interval scales with warp so lines feel smooth
+    // at low warp without burning CPU at high warp.
+    const warp = this.timeControls.warpLevel;
+    const orbitUpdateInterval = warp <= 10 ? 0.05 : warp <= 100 ? 0.15 : 0.5;
     this.orbitUpdateTimer += frameDt;
-    if (this.orbitUpdateTimer > 0.5) {
+    if (this.orbitUpdateTimer > orbitUpdateInterval) {
       this.orbitUpdateTimer = 0;
       const predicted = predictOrbit(this.state.stateVector);
       this.orbitLine.updateFromPositions(predicted);
-    }
-
-    // Hide the ISS orbit line during close approach and while docked to prevent
-    // z-fighting: once both craft share the same ~408 km orbit, their predicted
-    // paths are identical circles and flicker against each other.
-    if (this.issStateVector) {
-      const s = this.state.stateVector;
-      const iv = this.issStateVector;
-      const dx = s.position[0] - iv.position[0];
-      const dy = s.position[1] - iv.position[1];
-      const dz = s.position[2] - iv.position[2];
-      const approachDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const hideIssorbit = this.dockedFlying || approachDist < 50_000; // < 50 km
-      this.issOrbitLine.setVisible(!hideIssorbit);
+      if (this.issStateVector) {
+        const isspredicted = predictOrbit(this.issStateVector);
+        this.issOrbitLine.updateFromPositions(isspredicted);
+      }
     }
 
     // Update celestial sphere
