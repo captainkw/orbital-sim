@@ -267,7 +267,7 @@ export function biellipticPreset(): ManeuverSequence {
         duration: burnDur1,
       },
       {
-        id: 'Periapsis Raise',
+        id: 'Perigee Raise',
         startTime: burnStart2,
         deltaV: [dv2_bi, 0, 0],
         duration: burnDur2,
