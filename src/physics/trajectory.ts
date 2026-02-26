@@ -92,9 +92,12 @@ export function predictOrbit(
 
   const points: [number, number, number][] = [];
   const semiLatusRectum = a * (1 - e * e);
+  const cosNu0 = Math.max(-1, Math.min(1, (x * pX + y * pY + z * pZ) / rMag));
+  const sinNu0 = (x * qX + y * qY + z * qZ) / rMag;
+  const nu0 = Math.atan2(sinNu0, cosNu0);
 
   for (let k = 0; k < numPoints; k++) {
-    const nu = (2 * Math.PI * k) / numPoints; // true anomaly sample
+    const nu = nu0 + (2 * Math.PI * k) / numPoints; // phase-lock to current state
     const r  = semiLatusRectum / (1 + e * Math.cos(nu));
     const rc = r * Math.cos(nu);
     const rs = r * Math.sin(nu);
@@ -104,8 +107,9 @@ export function predictOrbit(
       rc * pZ + rs * qZ,
     ]);
   }
-  // Close the loop
-  points.push(points[0]);
+  // Ensure line starts/ends exactly at current spacecraft position.
+  points[0] = [x, y, z];
+  points.push([x, y, z]);
 
   return points;
 }

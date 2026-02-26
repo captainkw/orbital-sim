@@ -138,7 +138,7 @@ export class SpacecraftMesh {
                 // Use 3 engine instances at the aft end with slight spacing.
                 const engineOffsets = [
                   new THREE.Vector3(-510, 0.055 * shuttleWidth, -45),
-                  new THREE.Vector3(-510, 0, 45),
+                  new THREE.Vector3(-500, 0, 70),
                   new THREE.Vector3(-510, -0.055 * shuttleWidth, -45),
                 ];
                 engineOffsets.forEach((offset, idx) => {
@@ -148,8 +148,8 @@ export class SpacecraftMesh {
               } else if (partFile === 'shuttle-rcs.glb') {
                 // Use 2 RCS instances at the aft upper section.
                 const rcsOffsets = [
-                  new THREE.Vector3(-510, 0.095 * shuttleWidth, 90),
-                  new THREE.Vector3(-510, -0.095 * shuttleWidth, 90),
+                  new THREE.Vector3(-510, 0.095 * shuttleWidth, 100),
+                  new THREE.Vector3(-510, -0.095 * shuttleWidth, 100),
                 ];
                 rcsOffsets.forEach((offset, idx) => {
                   const instance = idx === 0 ? partModel : partModel.clone(true);
