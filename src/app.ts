@@ -644,9 +644,11 @@ export class App {
   private onRefLockWheel = (e: WheelEvent) => {
     e.preventDefault();
     const factor = 1 + e.deltaY * 0.001;
+    // No upper cap — let shuttleRefDistance exceed REF_LOCK_EXIT_DIST so the
+    // exit condition in updateShuttleRefFrameLock fires naturally.
     this.shuttleRefDistance = Math.max(
       this.sceneManager.controls.minDistance,
-      Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+      this.shuttleRefDistance * factor
     );
   };
 
@@ -674,9 +676,10 @@ export class App {
       if (this.refLockLastPinchDist > 0 && pinchDist > 0) {
         // Spreading fingers zooms in (smaller distance), pinching zooms out.
         const factor = this.refLockLastPinchDist / pinchDist;
+        // No upper cap — allow exceeding REF_LOCK_EXIT_DIST to trigger lock exit.
         this.shuttleRefDistance = Math.max(
           this.sceneManager.controls.minDistance,
-          Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+          this.shuttleRefDistance * factor
         );
       }
       this.refLockLastPinchDist = pinchDist;
@@ -914,6 +917,20 @@ export class App {
       this.orbitUpdateTimer = 0;
       const predicted = predictOrbit(this.state.stateVector);
       this.orbitLine.updateFromPositions(predicted);
+    }
+
+    // Hide the ISS orbit line during close approach and while docked to prevent
+    // z-fighting: once both craft share the same ~408 km orbit, their predicted
+    // paths are identical circles and flicker against each other.
+    if (this.issStateVector) {
+      const s = this.state.stateVector;
+      const iv = this.issStateVector;
+      const dx = s.position[0] - iv.position[0];
+      const dy = s.position[1] - iv.position[1];
+      const dz = s.position[2] - iv.position[2];
+      const approachDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const hideIssorbit = this.dockedFlying || approachDist < 50_000; // < 50 km
+      this.issOrbitLine.setVisible(!hideIssorbit);
     }
 
     // Update celestial sphere
