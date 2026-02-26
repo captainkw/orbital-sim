@@ -65,6 +65,8 @@ The ISS is placed in a 408 km circular orbit ahead of the shuttle, which starts 
 
 Docking is confirmed when the shuttle closes to within 500 m at under 2 m/s relative velocity.
 
+**After docking**, tap or click the overlay to continue flying. The shuttle and ISS travel together as a single combined vehicle. Because the docked mass is much larger (Shuttle ~110,000 kg + ISS ~420,000 kg = ~530,000 kg total), thrust acceleration is significantly reduced compared to flying the shuttle alone. Use the same manual controls to raise or lower the combined orbit. An **Undock** button appears at the bottom of the screen — clicking it applies a small separation impulse and re-arms independent docking detection only after the vehicles are more than 2,500 m apart.
+
 ### Bi-Elliptic Transfer
 
 The **Bi-Elliptic LEO to GEO via 200 Mm** preset shows a three-burn trajectory: the spacecraft swings all the way out to 200,000 km before descending into GEO. It demonstrates the bi-elliptic concept — for sufficiently large orbit-ratio changes (r₂/r₁ > 11.94) this route uses less delta-V than a Hohmann transfer.
@@ -86,6 +88,8 @@ The warp slider at the top of the screen lets you speed up time across seven lev
 ### Camera Lock
 
 Use the **camera target dropdown** to lock the camera on Earth, the shuttle, or switch to free camera mode. Right-clicking automatically switches to free camera.
+
+When the camera is locked to the shuttle and you zoom in closer than **25 km**, the camera automatically enters **shuttle reference-frame lock**: it holds the same pitch, roll, and yaw as the shuttle so the vessel stays visually stable even at high time-warp. You can still pan around the shuttle with one finger (or left-drag on desktop) and pinch/scroll to zoom. Zoom back out past **30 km** to exit the lock and return to the standard orbital camera.
 
 ---
 
@@ -190,6 +194,18 @@ Density falls off exponentially with altitude: `rho = rho_0 * exp(-h / H)`. The 
 All physics are advanced with a **4th-order Runge-Kutta (RK4)** integrator at a fixed 1-second timestep. At each step, gravity, drag, and any active thrust are summed into a net acceleration and propagated through the standard k1--k4 stages. The fixed timestep ensures deterministic, reproducible results regardless of frame rate.
 
 At high warp levels, the engine runs up to 10,000 physics steps per frame to keep up with the accelerated clock.
+
+### Orbit Line Rendering
+
+The predicted orbit line is drawn as an **exact analytical Keplerian ellipse**, not a numerically integrated trajectory. Each frame, the current state vector is used to derive the in-plane basis directly:
+
+1. **Plane normal**: `h = r × v` (specific angular momentum vector)
+2. **Perigee direction**: eccentricity vector `e = ((v²−μ/r)r − (r·v)v) / μ`; falls back to the current radius direction when `e < 0.0001` to avoid the singularity at zero eccentricity
+3. **Second in-plane axis**: `q = h × p` (right-hand orthogonal)
+
+1,200 points are sampled at equal true-anomaly intervals around the full ellipse, starting at the spacecraft's current true anomaly so the line is always phase-locked and visually touches the vessel. The computation is pure trigonometry — no integration — so it runs every frame at negligible cost and never flickers or jumps.
+
+For hyperbolic or escape trajectories the orbit line falls back to a short RK4 numerical propagation.
 
 ### Hohmann Transfers
 
@@ -310,8 +326,9 @@ orbital-sim/
 │   ├── scene/
 │   │   ├── scene-manager.ts # Renderer, camera, OrbitControls
 │   │   ├── earth.ts         # Textured sphere
-│   │   ├── spacecraft.ts    # Shuttle STL model, orientation, thrust arrow
-│   │   ├── orbit-line.ts    # Predicted orbit line
+│   │   ├── spacecraft.ts    # Shuttle GLB model, orientation, thrust arrow
+│   │   ├── iss-target.ts    # ISS GLB model loader and adaptive scaler
+│   │   ├── orbit-line.ts    # Analytical Keplerian orbit ellipse
 │   │   ├── celestial-sphere.ts  # Stars, sun, moon
 │   │   └── lighting.ts      # Directional sunlight + ambient
 │   ├── controls/
@@ -325,7 +342,8 @@ orbital-sim/
 │   │   ├── orbital-display.ts  # Orbital elements display
 │   │   ├── timeline.ts      # Visual timeline with burn labels
 │   │   ├── time-controls.ts # Pause/play, warp slider
-│   │   └── crash-overlay.ts # Crash detection and restart
+│   │   ├── crash-overlay.ts # Crash detection and restart
+│   │   └── docking-overlay.ts  # Docking success overlay and undock button
 │   └── scripting/
 │       ├── maneuver-schema.ts    # JSON validation and serialization
 │       ├── maneuver-executor.ts  # Fires burns at scheduled sim times

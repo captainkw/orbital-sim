@@ -30,7 +30,7 @@ export class DockingOverlay {
         Phase orbit at 350 km → TI Burn → Transfer ellipse → Circularization at 408 km
       </div>
       <div style="color: #555; font-size: 13px; margin-top: 32px;">
-        Click anywhere to continue flying
+        Tap or click anywhere to continue flying
       </div>
     `;
 
@@ -56,8 +56,13 @@ export class DockingOverlay {
 
     document.body.appendChild(this.overlay);
 
-    this.overlay.addEventListener('click', () => this.continue());
-    this.undockBtn.addEventListener('click', (e) => {
+    // Use pointerup instead of click so the tap fires reliably on mobile
+    // (click can be swallowed by the Three.js canvas pointer handlers below).
+    this.overlay.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      this.continue();
+    });
+    this.undockBtn.addEventListener('pointerup', (e) => {
       e.stopPropagation();
       this.onUndock?.();
     });
