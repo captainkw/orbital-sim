@@ -4,6 +4,25 @@ This file records lessons learned and project-specific conventions for AI assist
 
 ---
 
+## Git Workflow — NEVER push directly to `main`
+
+**Rule**: Always create a feature branch and open a PR. Never push commits directly to `main` unless the user explicitly says "push to main directly."
+
+The correct workflow for every change:
+1. Create a feature branch: `git checkout -b feature/my-change`
+2. Commit changes to the branch
+3. Push the branch: `git push -u origin feature/my-change`
+4. Open a PR: `gh pr create ...`
+5. Let the user review, playtest, and merge the PR themselves
+
+If a mistake is made and a commit lands on `main` directly:
+1. Create a feature branch from the current HEAD: `git checkout -b feature/my-change`
+2. Push the feature branch: `git push -u origin feature/my-change`
+3. Revert `main` with a force push: `git checkout main && git reset --hard <previous-sha> && git push --force origin main`
+4. Open a PR from the feature branch
+
+---
+
 ## Three.js OrbitControls — Do NOT fight it with manual camera writes
 
 ### The mistake
