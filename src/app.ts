@@ -246,6 +246,16 @@ export class App {
           const altKm = Math.round((r - EARTH_RADIUS) / 1000);
           showCircularSliders(altKm);
         }
+        // ISS rendezvous preset: smoothly fly the camera to the shuttle.
+        if (val === 'iss-rendezvous') {
+          const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement | null;
+          if (this.cameraLockTarget !== 'shuttle') {
+            this.cameraLockTarget = 'shuttle';
+            if (cameraTargetSelect) cameraTargetSelect.value = 'shuttle';
+            this.updateRecenterVisibility();
+          }
+          this.startShuttleRecenterTransition(2.0);
+        }
       }
     });
 
