@@ -95,9 +95,8 @@ export class App {
   private controlsPanEnabled = true;
   private controlsDampingEnabled = true;
   private controlsZoomEnabled = true;
-  private refLockPointerActive = false;
-  private refLockLastPointerX = 0;
-  private refLockLastPointerY = 0;
+  private refLockPointers = new Map<number, { x: number; y: number }>();
+  private refLockLastPinchDist = 0;
   private refLockListenersAttached = false;
 
   constructor() {
@@ -627,34 +626,57 @@ export class App {
   };
 
   private onRefLockPointerDown = (e: PointerEvent) => {
-    if (e.button !== 0) return;
-    this.refLockPointerActive = true;
-    this.refLockLastPointerX = e.clientX;
-    this.refLockLastPointerY = e.clientY;
+    this.refLockPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.refLockPointers.size === 2) {
+      const pts = [...this.refLockPointers.values()];
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      this.refLockLastPinchDist = Math.sqrt(dx * dx + dy * dy);
+    }
   };
 
   private onRefLockPointerMove = (e: PointerEvent) => {
-    if (!this.refLockPointerActive) return;
-    const dx = e.clientX - this.refLockLastPointerX;
-    const dy = e.clientY - this.refLockLastPointerY;
-    this.refLockLastPointerX = e.clientX;
-    this.refLockLastPointerY = e.clientY;
+    const prev = this.refLockPointers.get(e.pointerId);
+    if (!prev) return;
 
-    const sensitivity = 0.005;
-    const yAxis = new THREE.Vector3(0, 1, 0);
-    this.shuttleRefLocalOffset.applyAxisAngle(yAxis, -dx * sensitivity);
+    if (this.refLockPointers.size >= 2) {
+      // Two-finger pinch — update this pointer then compute new pinch distance.
+      this.refLockPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pts = [...this.refLockPointers.values()];
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      const pinchDist = Math.sqrt(dx * dx + dy * dy);
+      if (this.refLockLastPinchDist > 0 && pinchDist > 0) {
+        // Spreading fingers zooms in (smaller distance), pinching zooms out.
+        const factor = this.refLockLastPinchDist / pinchDist;
+        this.shuttleRefDistance = Math.max(
+          this.sceneManager.controls.minDistance,
+          Math.min(REF_LOCK_EXIT_DIST * 0.95, this.shuttleRefDistance * factor)
+        );
+      }
+      this.refLockLastPinchDist = pinchDist;
+    } else {
+      // Single pointer — orbit around shuttle.
+      const dx = e.clientX - prev.x;
+      const dy = e.clientY - prev.y;
+      this.refLockPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-    const rightAxis = new THREE.Vector3()
-      .crossVectors(yAxis, this.shuttleRefLocalOffset)
-      .normalize();
-    if (rightAxis.lengthSq() > 0.001) {
-      this.shuttleRefLocalOffset.applyAxisAngle(rightAxis, -dy * sensitivity);
+      const sensitivity = 0.005;
+      const yAxis = new THREE.Vector3(0, 1, 0);
+      this.shuttleRefLocalOffset.applyAxisAngle(yAxis, -dx * sensitivity);
+      const rightAxis = new THREE.Vector3()
+        .crossVectors(yAxis, this.shuttleRefLocalOffset)
+        .normalize();
+      if (rightAxis.lengthSq() > 0.001) {
+        this.shuttleRefLocalOffset.applyAxisAngle(rightAxis, -dy * sensitivity);
+      }
+      this.shuttleRefLocalOffset.normalize();
     }
-    this.shuttleRefLocalOffset.normalize();
   };
 
-  private onRefLockPointerUp = () => {
-    this.refLockPointerActive = false;
+  private onRefLockPointerUp = (e: PointerEvent) => {
+    this.refLockPointers.delete(e.pointerId);
+    this.refLockLastPinchDist = 0;
   };
 
   private attachRefLockListeners() {
@@ -664,6 +686,7 @@ export class App {
     el.addEventListener('pointerdown', this.onRefLockPointerDown);
     el.addEventListener('pointermove', this.onRefLockPointerMove);
     el.addEventListener('pointerup', this.onRefLockPointerUp);
+    el.addEventListener('pointercancel', this.onRefLockPointerUp);
     el.addEventListener('pointerleave', this.onRefLockPointerUp);
     this.refLockListenersAttached = true;
   }
@@ -675,12 +698,15 @@ export class App {
     el.removeEventListener('pointerdown', this.onRefLockPointerDown);
     el.removeEventListener('pointermove', this.onRefLockPointerMove);
     el.removeEventListener('pointerup', this.onRefLockPointerUp);
+    el.removeEventListener('pointercancel', this.onRefLockPointerUp);
     el.removeEventListener('pointerleave', this.onRefLockPointerUp);
     this.refLockListenersAttached = false;
   }
 
   private exitRefLock() {
     this.shuttleRefFrameLock = false;
+    this.refLockPointers.clear();
+    this.refLockLastPinchDist = 0;
     this.detachRefLockListeners();
     this.sceneManager.controls.enableRotate = this.controlsRotateEnabled;
     this.sceneManager.controls.enablePan = this.controlsPanEnabled;
@@ -701,17 +727,19 @@ export class App {
       return;
     }
 
-    const zoomDist = this.sceneManager.camera.position.distanceTo(
-      this.sceneManager.controls.target
-    );
+    // Always measure distance from camera to the actual shuttle, not the
+    // (potentially panned) controls.target. On mobile, two-finger pan can
+    // drift controls.target far from the shuttle, causing a false trigger
+    // that locks with an incorrect shuttleRefDistance (~47 km snap bug).
+    const shuttleTarget = this.getShuttleTarget();
+    const offsetWorld = this.sceneManager.camera.position.clone().sub(shuttleTarget);
+    const zoomDist = offsetWorld.length();
     if (zoomDist <= REF_LOCK_ENTER_DIST) {
-      const shuttleTarget = this.getShuttleTarget();
-      const offsetWorld = this.sceneManager.camera.position.clone().sub(shuttleTarget);
       const [qx, qy, qz, qw] = this.state.quaternion;
       const shuttleQuat = new THREE.Quaternion(qx, qy, qz, qw);
       const invQuat = shuttleQuat.clone().invert();
       if (offsetWorld.lengthSq() > 1e-10) {
-        this.shuttleRefDistance = offsetWorld.length();
+        this.shuttleRefDistance = zoomDist;
         this.shuttleRefLocalOffset.copy(
           offsetWorld.clone().normalize().applyQuaternion(invQuat)
         );
