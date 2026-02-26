@@ -27,7 +27,7 @@ export function buildHohmannPreset(name: string, fromAltKm: number, toAltKm: num
 
   let maneuvers;
   if (raising) {
-    // Prograde: injection burn at periapsis, circularization at apoapsis
+    // Prograde: injection burn at perigee, circularization at apogee
     maneuvers = [
       {
         id: 'Transfer Injection',
@@ -43,7 +43,7 @@ export function buildHohmannPreset(name: string, fromAltKm: number, toAltKm: num
       },
     ];
   } else {
-    // Retrograde: deorbit burn at apoapsis, circularization at periapsis
+    // Retrograde: deorbit burn at apogee, circularization at perigee
     maneuvers = [
       {
         id: 'Deorbit Burn',
@@ -142,7 +142,7 @@ export function issRendezvousPreset(): ManeuverSequence {
   const issTransferAngle = (2 * Math.PI / T_iss) * transferTime;
 
   // ISS needs to be (π − issTransferAngle) ahead at TI so it arrives at the
-  // apoapsis rendezvous point simultaneously with the shuttle.
+  // apogee rendezvous point simultaneously with the shuttle.
   const requiredLeadAtTI = Math.PI - issTransferAngle;
   const phi_iss = requiredLeadAtTI + phaseGain;     // radians
 
@@ -166,7 +166,7 @@ export function issRendezvousPreset(): ManeuverSequence {
   const burnDuration = 30;
   const mccDuration = 20;
   // Center both burns at their orbit nodes. The phase-angle calculation assumes
-  // the effective ΔV happens at periapsis (TI) and apoapsis (circ), which
+  // the effective ΔV happens at perigee (TI) and apogee (circ), which
   // corresponds to the midpoint of each finite-duration burn. Starting each
   // burn burnDuration/2 seconds early achieves this alignment.
   const tiBurnStart = tiBurnTime - burnDuration / 2;
@@ -215,8 +215,8 @@ export function issRendezvousPreset(): ManeuverSequence {
 
 /**
  * Bi-Elliptic Transfer — LEO (200 km) → GEO (35,786 km) via a 200,000 km
- * intermediate orbit.  Three burns: TLI at LEO, raise-periapsis at 200 Mm,
- * circularize at GEO.  Demonstrates the sweeping high-apoapsis trajectory.
+ * intermediate orbit.  Three burns: TLI at LEO, raise-perigee at 200 Mm,
+ * circularize at GEO.  Demonstrates the sweeping high-apogee trajectory.
  */
 export function biellipticPreset(): ManeuverSequence {
   const mu  = GM_EARTH;
@@ -227,19 +227,19 @@ export function biellipticPreset(): ManeuverSequence {
   const v1 = Math.sqrt(mu / r1);
   const v2 = Math.sqrt(mu / r2);
 
-  // First transfer ellipse: periapsis = r1, apoapsis = r_int
+  // First transfer ellipse: perigee = r1, apogee = r_int
   const a_te1 = (r1 + r_int) / 2;
   const vte1_peri = Math.sqrt(mu * (2 / r1   - 1 / a_te1));
   const vte1_apo  = Math.sqrt(mu * (2 / r_int - 1 / a_te1));
 
-  // Second transfer ellipse: apoapsis = r_int, periapsis = r2
+  // Second transfer ellipse: apogee = r_int, perigee = r2
   const a_te2 = (r_int + r2) / 2;
   const vte2_apo  = Math.sqrt(mu * (2 / r_int - 1 / a_te2));
   const vte2_peri = Math.sqrt(mu * (2 / r2   - 1 / a_te2));
 
-  const dv1_bi = vte1_peri - v1;           // prograde at LEO periapsis
-  const dv2_bi = vte2_apo  - vte1_apo;    // prograde at intermediate apoapsis
-  const dv3_bi = v2        - vte2_peri;   // retrograde at GEO periapsis (negative)
+  const dv1_bi = vte1_peri - v1;           // prograde at LEO perigee
+  const dv2_bi = vte2_apo  - vte1_apo;    // prograde at intermediate apogee
+  const dv3_bi = v2        - vte2_peri;   // retrograde at GEO perigee (negative)
 
   const t_te1 = Math.PI * Math.sqrt(a_te1 ** 3 / mu);
   const t_te2 = Math.PI * Math.sqrt(a_te2 ** 3 / mu);
@@ -285,13 +285,13 @@ export function biellipticPreset(): ManeuverSequence {
 
 /**
  * Reentry Sequence — from ISS altitude (408 km), a retrograde deorbit burn
- * lowers periapsis to ~60 km.  Atmospheric drag then causes the spacecraft
+ * lowers perigee to ~60 km.  Atmospheric drag then causes the spacecraft
  * to spiral inward and eventually crash.
  */
 export function reentryPreset(): ManeuverSequence {
   const mu       = GM_EARTH;
   const r_start  = EARTH_RADIUS + 408e3;
-  const r_peri   = EARTH_RADIUS + 60e3;   // periapsis below 70 km crash threshold
+  const r_peri   = EARTH_RADIUS + 60e3;   // perigee below 70 km crash threshold
   const v_circ   = Math.sqrt(mu / r_start);
   const a_reentry = (r_start + r_peri) / 2;
   const v_at_apo  = Math.sqrt(mu * (2 / r_start - 1 / a_reentry));

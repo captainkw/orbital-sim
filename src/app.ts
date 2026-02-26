@@ -552,9 +552,9 @@ export class App {
     const currentRadius = rVec.length();
     let orbitRadiusMeters = currentRadius;
     if (Number.isFinite(elements.semiMajorAxis) && elements.eccentricity < 1) {
-      const apoapsis = elements.semiMajorAxis * (1 + elements.eccentricity);
-      if (Number.isFinite(apoapsis) && apoapsis > 0) {
-        orbitRadiusMeters = Math.max(orbitRadiusMeters, apoapsis);
+      const apogee = elements.semiMajorAxis * (1 + elements.eccentricity);
+      if (Number.isFinite(apogee) && apogee > 0) {
+        orbitRadiusMeters = Math.max(orbitRadiusMeters, apogee);
       }
     }
     orbitRadiusMeters = Math.max(orbitRadiusMeters, EARTH_RADIUS);

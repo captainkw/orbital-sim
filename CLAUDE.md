@@ -79,6 +79,17 @@ The custom wheel handler adjusts `this.shuttleRefDistance` directly. The custom 
 
 ---
 
+## Terminology — Perigee / Apogee, not Periapsis / Apoapsis
+
+This simulator is Earth-orbit only. Always use **perigee** and **apogee** in:
+- All UI labels (HUD, overlays, dropdowns)
+- README and documentation
+- Code comments and variable names
+
+Only use the generic terms **periapsis / apoapsis** if the project ever expands to simulate orbits around other bodies (Moon, Mars, etc.). Until then, periapsis/apoapsis are incorrect for this context.
+
+---
+
 ## General conventions
 
 - Scene units: `1 unit = 1000 km`. The constant `SCALE = 1e-6` converts metres → scene units.
