@@ -1,4 +1,4 @@
-import { EARTH_RADIUS, GM_EARTH, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE } from './constants';
+import { EARTH_RADIUS, GM_EARTH, ISS_MASS, MAX_STEPS_PER_FRAME, PHYSICS_DT, SCALE, SHUTTLE_MASS, THRUST_FORCE } from './constants';
 import { ManeuverSequence, SpacecraftState, StateVector } from './types';
 import * as THREE from 'three';
 
@@ -66,6 +66,7 @@ export class App {
   private state: SpacecraftState;
   private issStateVector: StateVector | null = null;
   private docked = false;
+  private dockedFlying = false; // docked & overlay dismissed — flying together
   private currentVisualScale = MODEL_SCALE_FAR;
   private simTime = 0;
   private accumulator = 0;
@@ -148,10 +149,13 @@ export class App {
 
     // Docking overlay
     this.dockingOverlay = new DockingOverlay();
-    this.dockingOverlay.setRestartCallback(() => {
-      this.docked = false;
-      const seq = getPreset(this.lastPresetName);
-      if (seq) this.loadSequence(seq);
+    this.dockingOverlay.setContinueCallback(() => {
+      // Dismiss overlay, enter dockedFlying state — sim keeps running
+      this.dockedFlying = true;
+      this.dockingOverlay.showUndockButton();
+    });
+    this.dockingOverlay.setUndockCallback(() => {
+      this.undock();
     });
 
     // Initial spacecraft state: 600km LEO, equatorial, circular
@@ -439,9 +443,11 @@ export class App {
     this.accumulator = 0;
     this.crashed = false;
     this.docked = false;
+    this.dockedFlying = false;
     if (this.shuttleRefFrameLock) this.exitRefLock();
     this.crashOverlay.hide();
     this.dockingOverlay.hide();
+    this.dockingOverlay.hideUndockButton();
 
     // ISS state — present only for rendezvous preset
     if (seq.issInitialState) {
@@ -463,6 +469,14 @@ export class App {
     this.spacecraftControls.resetOrientation();
     this.maneuverExecutor.loadSequence(seq);
     this.timeline.loadSequence(seq);
+  }
+
+  private undock() {
+    this.docked = false;
+    this.dockedFlying = false;
+    this.dockingOverlay.hideUndockButton();
+    // ISS inherits the current combined velocity — it continues on its own orbit.
+    // Shuttle keeps the same position/velocity; they naturally separate over time.
   }
 
   start() {
@@ -801,9 +815,14 @@ export class App {
       this.updateRecenterVisibility();
     }
 
+    // Thrust acceleration scales down by combined mass when docked to ISS.
+    // THRUST_FORCE = SHUTTLE_MASS * 10 m/s²; docked = same force / (shuttle + ISS).
+    const activeMass = this.dockedFlying ? SHUTTLE_MASS + ISS_MASS : SHUTTLE_MASS;
+    const thrustAccel = THRUST_FORCE / activeMass;
+
     if (!this.timeControls.paused && !this.crashed && !this.docked) {
       // Spacecraft keyboard controls (rotation uses frame dt)
-      const manualThrust = this.spacecraftControls.update(this.state, frameDt);
+      const manualThrust = this.spacecraftControls.update(this.state, frameDt, thrustAccel);
 
       // Physics accumulator
       this.accumulator += frameDt * this.timeControls.warpLevel;
@@ -833,16 +852,22 @@ export class App {
         s.position = [newState[0], newState[1], newState[2]];
         s.velocity = [newState[3], newState[4], newState[5]];
 
-        // RK4 step — ISS (no thrust, pure Keplerian)
         if (this.issStateVector) {
-          const iv = this.issStateVector;
-          const newISS = rk4Step(
-            [iv.position[0], iv.position[1], iv.position[2],
-             iv.velocity[0], iv.velocity[1], iv.velocity[2]],
-            PHYSICS_DT
-          );
-          iv.position = [newISS[0], newISS[1], newISS[2]];
-          iv.velocity = [newISS[3], newISS[4], newISS[5]];
+          if (this.dockedFlying) {
+            // Docked: ISS rigidly follows the shuttle's physics position/velocity.
+            this.issStateVector.position = [...s.position] as [number, number, number];
+            this.issStateVector.velocity = [...s.velocity] as [number, number, number];
+          } else {
+            // Undocked: ISS propagates independently (pure Keplerian, no thrust).
+            const iv = this.issStateVector;
+            const newISS = rk4Step(
+              [iv.position[0], iv.position[1], iv.position[2],
+               iv.velocity[0], iv.velocity[1], iv.velocity[2]],
+              PHYSICS_DT
+            );
+            iv.position = [newISS[0], newISS[1], newISS[2]];
+            iv.velocity = [newISS[3], newISS[4], newISS[5]];
+          }
         }
 
         this.simTime += PHYSICS_DT;
@@ -854,12 +879,14 @@ export class App {
         const altitude = r - EARTH_RADIUS;
         if (this.crashOverlay.checkCrash(altitude)) {
           this.crashed = true;
+          this.dockedFlying = false;
+          this.dockingOverlay.hideUndockButton();
           this.crashOverlay.show();
           break;
         }
 
-        // Check docking
-        if (this.issStateVector && !this.docked) {
+        // Check docking (only when not already docked)
+        if (this.issStateVector && !this.docked && !this.dockedFlying) {
           const iv = this.issStateVector;
           const dx = s.position[0] - iv.position[0];
           const dy = s.position[1] - iv.position[1];

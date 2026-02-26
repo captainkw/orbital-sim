@@ -14,7 +14,14 @@ export const PHYSICS_DT = 1.0;
 // Max physics steps per frame (prevents runaway at high warp)
 export const MAX_STEPS_PER_FRAME = 10000;
 
-// Default spacecraft thrust acceleration (m/s^2) — ~10 m/s^2, like a small thruster
+// Spacecraft masses (kg) — used to scale thrust acceleration when docked
+export const SHUTTLE_MASS = 110_000;   // ~110 t (Space Shuttle orbiter dry + propellant)
+export const ISS_MASS     = 420_000;   // ~420 t (International Space Station)
+
+// Default spacecraft thrust force (N) — gives ~10 m/s² on the shuttle alone
+export const THRUST_FORCE = SHUTTLE_MASS * 10.0;
+
+// Default spacecraft thrust acceleration (m/s^2) — undocked baseline
 export const THRUST_ACCEL = 10.0;
 
 // Rotation rate for pitch/yaw (rad/s)

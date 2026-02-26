@@ -1,6 +1,8 @@
 export class DockingOverlay {
   private overlay: HTMLDivElement;
-  private onRestart: (() => void) | null = null;
+  private onContinue: (() => void) | null = null;
+  private onUndock: (() => void) | null = null;
+  private undockBtn: HTMLButtonElement;
 
   constructor() {
     this.overlay = document.createElement('div');
@@ -28,16 +30,50 @@ export class DockingOverlay {
         Phase orbit at 350 km → TI Burn → Transfer ellipse → Circularization at 408 km
       </div>
       <div style="color: #555; font-size: 13px; margin-top: 32px;">
-        Click anywhere to restart
+        Click anywhere to continue flying
       </div>
     `;
+
+    this.undockBtn = document.createElement('button');
+    this.undockBtn.textContent = 'Undock from ISS';
+    Object.assign(this.undockBtn.style, {
+      display: 'none',
+      position: 'fixed',
+      bottom: '72px',
+      left: '50%',
+      transform: 'translateX(-50%)',
+      padding: '8px 20px',
+      background: 'rgba(0,0,0,0.7)',
+      color: '#ff8844',
+      border: '1px solid #ff8844',
+      borderRadius: '4px',
+      fontFamily: "'Courier New', monospace",
+      fontSize: '13px',
+      cursor: 'pointer',
+      zIndex: '1000',
+    });
+    document.body.appendChild(this.undockBtn);
+
     document.body.appendChild(this.overlay);
 
-    this.overlay.addEventListener('click', () => this.restart());
+    this.overlay.addEventListener('click', () => this.continue());
+    this.undockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onUndock?.();
+    });
   }
 
+  setContinueCallback(cb: () => void) {
+    this.onContinue = cb;
+  }
+
+  setUndockCallback(cb: () => void) {
+    this.onUndock = cb;
+  }
+
+  /** @deprecated use setContinueCallback */
   setRestartCallback(cb: () => void) {
-    this.onRestart = cb;
+    this.setContinueCallback(cb);
   }
 
   show() {
@@ -48,8 +84,16 @@ export class DockingOverlay {
     this.overlay.style.display = 'none';
   }
 
-  private restart() {
+  showUndockButton() {
+    this.undockBtn.style.display = 'block';
+  }
+
+  hideUndockButton() {
+    this.undockBtn.style.display = 'none';
+  }
+
+  private continue() {
     this.hide();
-    this.onRestart?.();
+    this.onContinue?.();
   }
 }
