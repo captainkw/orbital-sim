@@ -1,5 +1,5 @@
+import { GM_EARTH } from '../constants';
 import { StateVector } from '../types';
-import { stateToElements } from './orbital-elements';
 import { rk4Step } from './integrator';
 
 /**
@@ -17,30 +17,78 @@ export function predictOrbit(
   sv: StateVector,
   numPoints = 1200,
 ): [number, number, number][] {
-  const el = stateToElements(sv);
-  const { semiMajorAxis: a, eccentricity: e, inclination: i,
-          raan, argumentOfPeriapsis: aop } = el;
+  const [x, y, z] = sv.position;
+  const [vx, vy, vz] = sv.velocity;
 
-  // Fallback for hyperbolic/parabolic trajectories
-  if (!Number.isFinite(a) || e >= 1) {
+  const rMag = Math.hypot(x, y, z);
+  const vMag = Math.hypot(vx, vy, vz);
+  if (rMag < 1e-9 || vMag < 1e-9) {
     return predictOrbitNumerical(sv, numPoints);
   }
 
-  // Rotation matrix components (perifocal → ECI, Y-up convention)
-  // Y is north pole, so we use a Y-up rotation chain: Rz(raan) * Rx(i) * Rz(aop)
-  const cosO = Math.cos(raan),  sinO = Math.sin(raan);
-  const cosI = Math.cos(i),     sinI = Math.sin(i);
-  const cosW = Math.cos(aop),   sinW = Math.sin(aop);
+  // Specific angular momentum h = r x v (orbit plane normal)
+  const hx = y * vz - z * vy;
+  const hy = z * vx - x * vz;
+  const hz = x * vy - y * vx;
+  const hMag = Math.hypot(hx, hy, hz);
+  if (hMag < 1e-9) {
+    return predictOrbitNumerical(sv, numPoints);
+  }
+  const hHatX = hx / hMag;
+  const hHatY = hy / hMag;
+  const hHatZ = hz / hMag;
 
-  // Perifocal unit vectors expressed in ECI (Y-up)
-  // P̂ = direction of perigee, Q̂ = 90° ahead in orbit plane
-  const Px =  cosO * cosW - sinO * sinW * cosI;
-  const Py =  sinW * sinI;
-  const Pz =  sinO * cosW + cosO * sinW * cosI;
+  // Eccentricity vector: e = ((v^2 - mu/r) r - (r·v) v) / mu
+  const rDotV = x * vx + y * vy + z * vz;
+  const alpha = vMag * vMag - GM_EARTH / rMag;
+  const ex = (alpha * x - rDotV * vx) / GM_EARTH;
+  const ey = (alpha * y - rDotV * vy) / GM_EARTH;
+  const ez = (alpha * z - rDotV * vz) / GM_EARTH;
+  const e = Math.hypot(ex, ey, ez);
 
-  const Qx = -cosO * sinW - sinO * cosW * cosI;
-  const Qy =  cosW * sinI;
-  const Qz = -sinO * sinW + cosO * cosW * cosI;
+  // Specific orbital energy and semi-major axis
+  const energy = (vMag * vMag) / 2 - GM_EARTH / rMag;
+  if (energy >= 0) {
+    return predictOrbitNumerical(sv, numPoints);
+  }
+  const a = -GM_EARTH / (2 * energy);
+  if (!Number.isFinite(a) || a <= 0 || e >= 1) {
+    return predictOrbitNumerical(sv, numPoints);
+  }
+
+  // Build a stable in-plane basis.
+  // For e ~= 0, argument of perigee is undefined and can jump frame-to-frame.
+  // In that case anchor to current radius direction to avoid singularity flicker.
+  let pX: number;
+  let pY: number;
+  let pZ: number;
+  if (e > 1e-4) {
+    pX = ex / e;
+    pY = ey / e;
+    pZ = ez / e;
+  } else {
+    pX = x / rMag;
+    pY = y / rMag;
+    pZ = z / rMag;
+  }
+
+  // Orthogonalize p against h to suppress accumulated numeric drift.
+  const pDotH = pX * hHatX + pY * hHatY + pZ * hHatZ;
+  pX -= pDotH * hHatX;
+  pY -= pDotH * hHatY;
+  pZ -= pDotH * hHatZ;
+  const pMag = Math.hypot(pX, pY, pZ);
+  if (pMag < 1e-9) {
+    return predictOrbitNumerical(sv, numPoints);
+  }
+  pX /= pMag;
+  pY /= pMag;
+  pZ /= pMag;
+
+  // q = h x p
+  const qX = hHatY * pZ - hHatZ * pY;
+  const qY = hHatZ * pX - hHatX * pZ;
+  const qZ = hHatX * pY - hHatY * pX;
 
   const points: [number, number, number][] = [];
   const semiLatusRectum = a * (1 - e * e);
@@ -51,9 +99,9 @@ export function predictOrbit(
     const rc = r * Math.cos(nu);
     const rs = r * Math.sin(nu);
     points.push([
-      rc * Px + rs * Qx,
-      rc * Py + rs * Qy,
-      rc * Pz + rs * Qz,
+      rc * pX + rs * qX,
+      rc * pY + rs * qY,
+      rc * pZ + rs * qZ,
     ]);
   }
   // Close the loop
