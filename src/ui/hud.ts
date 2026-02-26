@@ -27,8 +27,8 @@ export class HUD {
 
     const a = elements.semiMajorAxis;
     const e = elements.eccentricity;
-    const apoapsis = e < 1 ? (a * (1 + e) - EARTH_RADIUS) / 1000 : Infinity;
-    const periapsis = (a * (1 - e) - EARTH_RADIUS) / 1000;
+    const apogee = e < 1 ? (a * (1 + e) - EARTH_RADIUS) / 1000 : Infinity;
+    const perigee = (a * (1 - e) - EARTH_RADIUS) / 1000;
 
     const hours = Math.floor(simTime / 3600);
     const mins = Math.floor((simTime % 3600) / 60);
@@ -69,8 +69,8 @@ export class HUD {
     this.el.textContent =
 `ALT   ${alt.toFixed(1)} km
 VEL   ${speed.toFixed(1)} m/s
-APO   ${apoapsis === Infinity ? '∞' : apoapsis.toFixed(1)} km
-PER   ${periapsis.toFixed(1)} km
+APOGEE  ${apogee === Infinity ? '∞' : apogee.toFixed(1)} km
+PERIGEE ${perigee.toFixed(1)} km
 SMA   ${(a / 1000).toFixed(1)} km
 ECC   ${e.toFixed(4)}
 INC   ${deg(elements.inclination)}°

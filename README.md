@@ -61,7 +61,7 @@ The real fun starts with transfer orbits. Select any transfer preset from the dr
 
 The **ISS Rendezvous & Docking** preset demonstrates the multi-phase approach used by the Space Shuttle and Soyuz to dock with the International Space Station.
 
-The ISS is placed in a 408 km circular orbit ahead of the shuttle, which starts in a 350 km **phasing orbit**. At 350 km the shuttle completes orbits faster than ISS (shorter period: ~91.4 vs ~92.5 min), so it slowly catches up. After two phasing orbits the geometry is correct for the **Terminal Initiation (TI) burn** — a small prograde impulse that raises the apoapsis to 408 km. The shuttle coasts up the transfer ellipse and meets the ISS at apoapsis, where a **Circularization** burn matches its velocity to the ISS. The HUD shows **DIST** (distance to ISS) and **RVEL** (relative velocity) in real time.
+The ISS is placed in a 408 km circular orbit ahead of the shuttle, which starts in a 350 km **phasing orbit**. At 350 km the shuttle completes orbits faster than ISS (shorter period: ~91.4 vs ~92.5 min), so it slowly catches up. After two phasing orbits the geometry is correct for the **Terminal Initiation (TI) burn** — a small prograde impulse that raises the apogee to 408 km. The shuttle coasts up the transfer ellipse and meets the ISS at apogee, where a **Circularization** burn matches its velocity to the ISS. The HUD shows **DIST** (distance to ISS) and **RVEL** (relative velocity) in real time.
 
 Docking is confirmed when the shuttle closes to within 500 m at under 2 m/s relative velocity.
 
@@ -71,7 +71,7 @@ The **Bi-Elliptic LEO to GEO via 200 Mm** preset shows a three-burn trajectory: 
 
 ### Reentry from ISS Orbit
 
-The **Reentry from ISS Orbit** preset fires a retrograde deorbit burn from 408 km, lowering the periapsis into the upper atmosphere. Watch atmospheric drag take over and the orbit decay until the crash overlay triggers.
+The **Reentry from ISS Orbit** preset fires a retrograde deorbit burn from 408 km, lowering the perigee into the upper atmosphere. Watch atmospheric drag take over and the orbit decay until the crash overlay triggers.
 
 Once a transfer preset is loaded, drag the **From** and **To** sliders to experiment with different altitudes. The maneuver sequence regenerates live -- you can see the burn markers shift on the timeline and watch the delta-V requirements change.
 
@@ -221,8 +221,8 @@ The heads-up display (top-left) shows real-time telemetry:
 |-------|-------------|
 | ALT | Altitude above Earth's surface (km) |
 | VEL | Orbital velocity (m/s) |
-| APO | Apogee altitude (km) |
-| PER | Perigee altitude (km) |
+| APOGEE | Apogee altitude (km) |
+| PERIGEE | Perigee altitude (km) |
 | SMA | Semi-major axis (km) |
 | ECC | Eccentricity |
 | INC | Inclination (degrees) |
