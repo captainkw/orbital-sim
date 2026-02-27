@@ -154,13 +154,25 @@
         top: 8px;
         left: 130px;
         right: 6px;
-        gap: 4px;
+        gap: 2px;
+        flex-direction: column-reverse;
       }
       #warp-indicator {
         font-size: 14px;
+        z-index: 0;
       }
       #warp-slider {
-        height: 36px;
+        height: 48px;
+        position: relative;
+        z-index: 1;
+      }
+      #warp-slider::-webkit-slider-thumb {
+        width: 32px;
+        height: 32px;
+      }
+      #warp-slider::-moz-range-thumb {
+        width: 32px;
+        height: 32px;
       }
       #import-export {
         position: absolute;
