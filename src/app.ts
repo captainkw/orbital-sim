@@ -47,12 +47,19 @@ const MODEL_SCALE_NEAR_DIST = 500 * SCALE;              // 0.5 km
 const MODEL_SCALE_FAR_DIST = 1_272_000 * SCALE;         // 1272 km
 const MODEL_SCALE_MID_DIST = 10_000 * SCALE;            // 10 km
 const MODEL_SCALE_MID = 0.0005;                         // already near true-size by 10 km
-const MODEL_SCALE_EXTREME_DIST = 65_000_000 * SCALE;    // 65,000 km — start of extreme-zoom boost
-// At the threshold the scale "pops" to MODEL_SCALE_EXTREME_BOOST to make the shuttle
-// immediately visible, then grows proportionally with distance so the shuttle maintains
-// a roughly constant apparent pixel size as the user zooms further out.
+// Gentle ramp zone: starts at 30,000 km (+10% instantly), +11% per additional 10,000 km.
+const MODEL_SCALE_RAMP_DIST = 30_000_000 * SCALE;       // 30,000 km
+const MODEL_SCALE_AT_RAMP = 1.10;
+const MODEL_SCALE_RAMP_RATE = 0.11 / (10_000_000 * SCALE); // +11% per 10,000 km
+const MODEL_SCALE_EXTREME_DIST = 65_000_000 * SCALE;    // 65,000 km — start of proportional boost
+// At the extreme threshold the scale "pops" to MODEL_SCALE_EXTREME_BOOST so the shuttle
+// stays visible, then grows proportionally with distance (constant apparent pixel size).
 const MODEL_SCALE_EXTREME_BOOST = 4.0;
 const MODEL_SCALE_EXTREME = 30.0;                       // cap — reached around 487,500 km
+// Visual radial lift: offset the shuttle away from Earth by this many Three.js units
+// per unit of (visualScale − 1), so the orbit line appears to run under the bottom of
+// the model rather than through its center.
+const MODEL_VISUAL_RADIAL_LIFT = 2.0;
 const REF_LOCK_ENTER_DIST = 25_000 * SCALE;        // 25 km
 const REF_LOCK_EXIT_DIST = 30_000 * SCALE;         // hysteresis to avoid flicker
 
@@ -676,14 +683,16 @@ export class App {
         (cameraDist - MODEL_SCALE_MID_DIST) / (MODEL_SCALE_FAR_DIST - MODEL_SCALE_MID_DIST)
       ));
       visualScale = MODEL_SCALE_MID + (MODEL_SCALE_FAR - MODEL_SCALE_MID) * tFar;
-    } else if (cameraDist <= MODEL_SCALE_EXTREME_DIST) {
-      // Far field: 1272 km → 65,000 km — hold at 1.0, no scaling up yet.
+    } else if (cameraDist <= MODEL_SCALE_RAMP_DIST) {
+      // Far field: 1272 km → 30,000 km — hold at 1.0.
       visualScale = MODEL_SCALE_FAR;
+    } else if (cameraDist <= MODEL_SCALE_EXTREME_DIST) {
+      // Ramp field: 30,000 km → 65,000 km — gentle +10% instant boost at 30k,
+      // then +11% per additional 10,000 km so the shuttle stays visible.
+      visualScale = MODEL_SCALE_AT_RAMP + (cameraDist - MODEL_SCALE_RAMP_DIST) * MODEL_SCALE_RAMP_RATE;
     } else {
-      // Extreme field: beyond 65,000 km — scale proportionally with distance.
-      // At the threshold the scale "pops" to EXTREME_BOOST (×4) and then grows
-      // linearly with the distance ratio so the shuttle holds a roughly constant
-      // angular size on screen. Capped at MODEL_SCALE_EXTREME (~487,500 km).
+      // Extreme field: beyond 65,000 km — scale proportionally with distance so the
+      // shuttle holds a roughly constant apparent angular size. Cap at MODEL_SCALE_EXTREME.
       const distRatio = cameraDist / MODEL_SCALE_EXTREME_DIST;
       visualScale = Math.min(MODEL_SCALE_EXTREME, MODEL_SCALE_EXTREME_BOOST * distRatio);
     }
@@ -997,6 +1006,14 @@ export class App {
 
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);
+    // Visually lift the shuttle radially away from Earth when scaled up, so the
+    // orbit line appears to run under the bottom of the model rather than its center.
+    if (this.currentVisualScale > 1.0) {
+      const pos = this.spacecraftMesh.group.position;
+      const lift = (this.currentVisualScale - 1.0) * MODEL_VISUAL_RADIAL_LIFT;
+      const radialDir = pos.clone().normalize();
+      this.spacecraftMesh.group.position.addScaledVector(radialDir, lift);
+    }
 
     if (this.issStateVector) {
       this.issMesh.updateFromState(this.issStateVector);
