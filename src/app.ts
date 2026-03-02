@@ -47,8 +47,12 @@ const MODEL_SCALE_NEAR_DIST = 500 * SCALE;              // 0.5 km
 const MODEL_SCALE_FAR_DIST = 1_272_000 * SCALE;         // 1272 km
 const MODEL_SCALE_MID_DIST = 10_000 * SCALE;            // 10 km
 const MODEL_SCALE_MID = 0.0005;                         // already near true-size by 10 km
-const MODEL_SCALE_EXTREME_DIST = 65_000_000 * SCALE;    // 65,000 km — hard to see below this
-const MODEL_SCALE_EXTREME = 80.0;                       // scale-up factor at extreme distances
+const MODEL_SCALE_EXTREME_DIST = 65_000_000 * SCALE;    // 65,000 km — start of extreme-zoom boost
+// At the threshold the scale "pops" to MODEL_SCALE_EXTREME_BOOST to make the shuttle
+// immediately visible, then grows proportionally with distance so the shuttle maintains
+// a roughly constant apparent pixel size as the user zooms further out.
+const MODEL_SCALE_EXTREME_BOOST = 4.0;
+const MODEL_SCALE_EXTREME = 30.0;                       // cap — reached around 487,500 km
 const REF_LOCK_ENTER_DIST = 25_000 * SCALE;        // 25 km
 const REF_LOCK_EXIT_DIST = 30_000 * SCALE;         // hysteresis to avoid flicker
 
@@ -676,12 +680,12 @@ export class App {
       // Far field: 1272 km → 65,000 km — hold at 1.0, no scaling up yet.
       visualScale = MODEL_SCALE_FAR;
     } else {
-      // Extreme field: beyond 65,000 km — scale up so the shuttle stays visible.
-      // Ramp from 1.0 at 65,000 km to MODEL_SCALE_EXTREME at 3× the threshold.
-      const tExtreme = Math.max(0, Math.min(1,
-        (cameraDist - MODEL_SCALE_EXTREME_DIST) / (MODEL_SCALE_EXTREME_DIST * 2)
-      ));
-      visualScale = MODEL_SCALE_FAR + (MODEL_SCALE_EXTREME - MODEL_SCALE_FAR) * tExtreme;
+      // Extreme field: beyond 65,000 km — scale proportionally with distance.
+      // At the threshold the scale "pops" to EXTREME_BOOST (×4) and then grows
+      // linearly with the distance ratio so the shuttle holds a roughly constant
+      // angular size on screen. Capped at MODEL_SCALE_EXTREME (~487,500 km).
+      const distRatio = cameraDist / MODEL_SCALE_EXTREME_DIST;
+      visualScale = Math.min(MODEL_SCALE_EXTREME, MODEL_SCALE_EXTREME_BOOST * distRatio);
     }
 
     this.currentVisualScale = visualScale;
