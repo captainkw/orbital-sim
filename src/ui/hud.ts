@@ -79,7 +79,6 @@ AoP   ${deg(elements.argumentOfPeriapsis)}°
 TA    ${deg(elements.trueAnomaly)}°
 TIME  ${timeStr}
 WARP  ${warpLevel}x${paused ? ' [PAUSED]' : ''}
-THR   ${state.thrustActive ? 'ACTIVE' : 'OFF'}
 DRAG  ${dragMagnitude(x, y, z, vx, vy, vz).toExponential(2)} m/s²
 ${zoomLine}
 ${scaleLine}${relNav}`;

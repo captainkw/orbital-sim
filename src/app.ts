@@ -43,10 +43,21 @@ const UNDOCK_REARM_DIST = 2500; // metres required before docking can re-arm
 const MODEL_SCALE_FAR = 1.0;
 // Approximate true-size floor near docking range.
 const MODEL_SCALE_NEAR = 0.00005;
-const MODEL_SCALE_NEAR_DIST = 500 * SCALE;         // 0.5 km
-const MODEL_SCALE_FAR_DIST = 1_272_000 * SCALE;    // 1272 km
-const MODEL_SCALE_MID_DIST = 10_000 * SCALE;       // 10 km
-const MODEL_SCALE_MID = 0.0005;                    // already near true-size by 10 km
+const MODEL_SCALE_NEAR_DIST = 500 * SCALE;              // 0.5 km
+const MODEL_SCALE_FAR_DIST = 1_272_000 * SCALE;         // 1272 km
+const MODEL_SCALE_MID_DIST = 10_000 * SCALE;            // 10 km
+const MODEL_SCALE_MID = 0.0005;                         // already near true-size by 10 km
+// Gentle ramp zone: 30,000 km → 65,000 km, scale from 1.20 to 2.0.
+const MODEL_SCALE_RAMP_DIST = 30_000_000 * SCALE;       // 30,000 km — ramp start
+const MODEL_SCALE_AT_RAMP = 1.20;                       // instant scale at ramp start
+const MODEL_SCALE_EXTREME_DIST = 65_000_000 * SCALE;    // 65,000 km — ramp end / scale cap
+const MODEL_SCALE_EXTREME = 2.0;                        // scale held from 65,000 km onward
+// Rate: goes from 1.20 at 30k to MODEL_SCALE_EXTREME at 65k.
+const MODEL_SCALE_RAMP_RATE = (MODEL_SCALE_EXTREME - MODEL_SCALE_AT_RAMP) / (MODEL_SCALE_EXTREME_DIST - MODEL_SCALE_RAMP_DIST);
+// Visual radial lift (Three.js world units, constant — not scale-proportional).
+// Only applied in the ramp zone (30k–65k km); zero lift outside this range.
+// 0.09 Three.js units ≈ 90 km → ~3 px at 30k zoom, ~2 px at 40k zoom.
+const MODEL_VISUAL_RADIAL_LIFT = 0.09;
 const REF_LOCK_ENTER_DIST = 25_000 * SCALE;        // 25 km
 const REF_LOCK_EXIT_DIST = 30_000 * SCALE;         // hysteresis to avoid flicker
 
@@ -74,6 +85,7 @@ export class App {
   private dockingDisabledUntil = 0;
   private redockNeedsSeparation = false;
   private currentVisualScale = MODEL_SCALE_FAR;
+  private currentInRampZone = false;
   private simTime = 0;
   private accumulator = 0;
   private lastFrameTime = 0;
@@ -645,32 +657,46 @@ export class App {
   }
 
   private updateAdaptiveModelScale() {
-    // Only apply adaptive scaling in shuttle lock mode.
-    // In Earth/free modes, keep model scale fixed to avoid apparent drifting shrink.
-    if (this.cameraLockTarget !== 'shuttle') {
-      this.spacecraftMesh.setVisualScale(MODEL_SCALE_FAR);
-      if (this.issStateVector) this.issMesh.setVisualScale(MODEL_SCALE_FAR);
-      return;
+    // Always compute scale from camera distance so the shuttle stays visible
+    // regardless of camera lock mode (Earth, shuttle, or free).
+    // In shuttle lock mode, use camera-to-target; in other modes use
+    // camera-to-shuttle-position so Earth-view zoom-out still scales up.
+    let cameraDist: number;
+    if (this.cameraLockTarget === 'shuttle') {
+      cameraDist = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
+    } else {
+      const shuttleTarget = this.getShuttleTarget();
+      cameraDist = this.sceneManager.camera.position.distanceTo(shuttleTarget);
     }
 
-    // Use OrbitControls zoom distance (camera-to-target) as the scaling driver.
-    const cameraDist = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
     let visualScale: number;
     if (cameraDist <= MODEL_SCALE_MID_DIST) {
-      // Near field: 0.5 km -> 10 km, stay close to true-size envelope.
+      // Near field: 0.5 km → 10 km — stay close to true-size.
       const tNear = Math.max(0, Math.min(1,
         (cameraDist - MODEL_SCALE_NEAR_DIST) / (MODEL_SCALE_MID_DIST - MODEL_SCALE_NEAR_DIST)
       ));
       visualScale = MODEL_SCALE_NEAR + (MODEL_SCALE_MID - MODEL_SCALE_NEAR) * tNear;
-    } else {
-      // Far field: 10 km -> 1272 km, scale up for readability.
+    } else if (cameraDist <= MODEL_SCALE_FAR_DIST) {
+      // Mid field: 10 km → 1272 km — scale up for readability.
       const tFar = Math.max(0, Math.min(1,
         (cameraDist - MODEL_SCALE_MID_DIST) / (MODEL_SCALE_FAR_DIST - MODEL_SCALE_MID_DIST)
       ));
       visualScale = MODEL_SCALE_MID + (MODEL_SCALE_FAR - MODEL_SCALE_MID) * tFar;
+    } else if (cameraDist <= MODEL_SCALE_RAMP_DIST) {
+      // Far field: 1272 km → 30,000 km — hold at 1.0, no ramp yet.
+      this.currentInRampZone = false;
+      visualScale = MODEL_SCALE_FAR;
+    } else if (cameraDist <= MODEL_SCALE_EXTREME_DIST) {
+      // Ramp field: 30,000 km → 65,000 km — linear from 1.20 to 2.0.
+      this.currentInRampZone = true;
+      visualScale = MODEL_SCALE_AT_RAMP + (cameraDist - MODEL_SCALE_RAMP_DIST) * MODEL_SCALE_RAMP_RATE;
+    } else {
+      // Extreme field: beyond 65,000 km — hold at MODEL_SCALE_EXTREME (2.0), no further growth.
+      this.currentInRampZone = false;
+      visualScale = MODEL_SCALE_EXTREME;
     }
-    this.currentVisualScale = visualScale;
 
+    this.currentVisualScale = visualScale;
     this.spacecraftMesh.setVisualScale(visualScale);
     if (this.issStateVector) {
       this.issMesh.setVisualScale(visualScale);
@@ -979,6 +1005,14 @@ export class App {
 
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);
+    // In the ramp zone (30k–65k km) visually lift the shuttle radially away from Earth
+    // so the orbit line appears to run under the bottom of the model. No lift outside
+    // this range (avoids pushing the shuttle away from Earth at extreme zoom).
+    if (this.currentInRampZone) {
+      const pos = this.spacecraftMesh.group.position;
+      const radialDir = pos.clone().normalize();
+      this.spacecraftMesh.group.position.addScaledVector(radialDir, MODEL_VISUAL_RADIAL_LIFT);
+    }
 
     if (this.issStateVector) {
       this.issMesh.updateFromState(this.issStateVector);
