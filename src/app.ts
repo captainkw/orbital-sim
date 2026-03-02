@@ -673,14 +673,15 @@ export class App {
       ));
       visualScale = MODEL_SCALE_MID + (MODEL_SCALE_FAR - MODEL_SCALE_MID) * tFar;
     } else if (cameraDist <= MODEL_SCALE_EXTREME_DIST) {
-      // Far field: 1272 km → 65,000 km — proportionally larger so the dot stays visible.
+      // Far field: 1272 km → 65,000 km — hold at 1.0, no scaling up yet.
+      visualScale = MODEL_SCALE_FAR;
+    } else {
+      // Extreme field: beyond 65,000 km — scale up so the shuttle stays visible.
+      // Ramp from 1.0 at 65,000 km to MODEL_SCALE_EXTREME at 3× the threshold.
       const tExtreme = Math.max(0, Math.min(1,
-        (cameraDist - MODEL_SCALE_FAR_DIST) / (MODEL_SCALE_EXTREME_DIST - MODEL_SCALE_FAR_DIST)
+        (cameraDist - MODEL_SCALE_EXTREME_DIST) / (MODEL_SCALE_EXTREME_DIST * 2)
       ));
       visualScale = MODEL_SCALE_FAR + (MODEL_SCALE_EXTREME - MODEL_SCALE_FAR) * tExtreme;
-    } else {
-      // Extreme field: beyond 65,000 km — hold at maximum scale.
-      visualScale = MODEL_SCALE_EXTREME;
     }
 
     this.currentVisualScale = visualScale;
