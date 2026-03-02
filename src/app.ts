@@ -34,12 +34,12 @@ import { ManeuverExecutor } from './scripting/maneuver-executor';
 import { getPreset, buildHohmannPreset } from './scripting/presets';
 import { validateSequence, serializeSequence } from './scripting/maneuver-schema';
 
-const DOCKING_DIST = 500;    // metres — success threshold
+const DOCKING_DIST = 25;     // metres — success threshold (must be < 30m)
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
 const UNDOCK_REDOCK_DELAY = 120; // sim seconds before docking is allowed again
-const UNDOCK_SEPARATION_DIST = 700; // metres initial positional separation
+const UNDOCK_SEPARATION_DIST = 40; // metres initial positional separation
 const UNDOCK_SEPARATION_DV = 0.5; // m/s gentle push apart
-const UNDOCK_REARM_DIST = 2500; // metres required before docking can re-arm
+const UNDOCK_REARM_DIST = 100; // metres required before docking can re-arm
 const MODEL_SCALE_FAR = 1.0;
 // Approximate true-size floor near docking range.
 const MODEL_SCALE_NEAR = 0.00005;
