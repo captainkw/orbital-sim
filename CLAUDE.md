@@ -184,7 +184,8 @@ This applies to: docking overlay, crash overlay, any future modal or toast that 
 
 ### When to create a PR
 
-After pushing a branch, always check `gh pr list --state open` to see if a PR already exists for that branch. If not, create one with `gh pr create`. Never assume a push to a branch automatically updates or creates a PR.
+After pushing a branch, always check `gh pr list --state open` or `gh pr status` to see if an open PR already exists for that branch.
+CRITICAL: If the PR for your current branch has already been MERGED or CLOSED, do NOT push to it. Pushing to a merged branch does not update `main` or reopen the PR. Instead, create a new branch from `main`, apply your fixes, push the new branch, and create a NEW PR.
 
 ---
 
