@@ -26,6 +26,21 @@ export class TimeControls {
     });
   }
 
+  /** Set warp to a specific level (snaps to nearest available level). */
+  setWarpLevel(level: WarpLevel) {
+    const idx = WARP_LEVELS.indexOf(level);
+    if (idx >= 0) {
+      this.warpIndex = idx;
+    } else {
+      // Find nearest
+      this.warpIndex = 0;
+      for (let i = 0; i < WARP_LEVELS.length; i++) {
+        if (WARP_LEVELS[i] <= level) this.warpIndex = i;
+      }
+    }
+    this.warpSlider.value = String(this.warpIndex);
+  }
+
   update() {
     if (this.input.consume('Space')) {
       this.paused = !this.paused;

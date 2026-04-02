@@ -4,6 +4,12 @@ export const GM_EARTH = 3.986004418e14;
 // Earth mean radius (meters)
 export const EARTH_RADIUS = 6.371e6;
 
+// Moon gravitational parameter (m^3/s^2)
+export const GM_MOON = 4.9048695e12;
+
+// Moon mean radius (meters)
+export const MOON_RADIUS = 1.7374e6;
+
 // Scale factor: multiply meters by SCALE to get Three.js units
 // 1 Three.js unit = 1,000 km
 export const SCALE = 1e-6;

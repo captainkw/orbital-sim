@@ -16,6 +16,8 @@ import { SceneManager } from './scene/scene-manager';
 import { Earth } from './scene/earth';
 import { SpacecraftMesh } from './scene/spacecraft';
 import { ISSTarget } from './scene/iss-target';
+import { OrionMesh } from './scene/orion-mesh';
+import { Moon } from './scene/moon';
 import { OrbitLine } from './scene/orbit-line';
 import { setupLighting } from './scene/lighting';
 import { CelestialSphere } from './scene/celestial-sphere';
@@ -26,6 +28,7 @@ import { InputManager } from './controls/input-manager';
 import { SpacecraftControls } from './controls/spacecraft-controls';
 import { MobileControls } from './controls/mobile-controls';
 import { HUD } from './ui/hud';
+import { ArtemisHUD } from './ui/artemis-hud';
 import { TimeControls } from './ui/time-controls';
 import { Timeline } from './ui/timeline';
 import { CrashOverlay } from './ui/crash-overlay';
@@ -33,6 +36,12 @@ import { DockingOverlay } from './ui/docking-overlay';
 import { ManeuverExecutor } from './scripting/maneuver-executor';
 import { getPreset, buildHohmannPreset } from './scripting/presets';
 import { validateSequence, serializeSequence } from './scripting/maneuver-schema';
+
+// Real-time mode imports
+import { RealTimeClock } from './realtime/clock';
+import { getSunPositionECI, getMoonPositionECI } from './realtime/celestial-positions';
+import { ISSTracker } from './realtime/iss-tracker';
+import { AROWClient } from './telemetry/arow-client';
 
 const DOCKING_DIST = 25;     // metres — success threshold (must be < 30m)
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
@@ -72,11 +81,23 @@ export class App {
   private inputManager: InputManager;
   private spacecraftControls: SpacecraftControls;
   private hud: HUD;
+  private artemisHud: ArtemisHUD;
   private timeControls: TimeControls;
   private timeline: Timeline;
   private maneuverExecutor: ManeuverExecutor;
   private crashOverlay: CrashOverlay;
   private dockingOverlay: DockingOverlay;
+
+  // Artemis II / Real-time mode
+  private orionMesh: OrionMesh;
+  private moonMesh: Moon;
+  private orionOrbitLine: OrbitLine;
+  private realTimeClock: RealTimeClock;
+  private issTracker: ISSTracker;
+  private arowClient: AROWClient;
+  private realTimeMode = false;
+  private artemisMode = false;
+  private currentMoonPositionECI: [number, number, number] = [0, 0, 0];
 
   private state: SpacecraftState;
   private issStateVector: StateVector | null = null;
@@ -92,7 +113,7 @@ export class App {
   private currentSequence: ManeuverSequence | null = null;
   private crashed = false;
   private lastPresetName = 'leo-circular';
-  private cameraLockTarget: 'earth' | 'shuttle' | 'free' = 'earth';
+  private cameraLockTarget: 'earth' | 'shuttle' | 'orion' | 'moon' | 'free' = 'earth';
   private cameraTransition: {
     startTime: number;
     duration: number;
@@ -138,8 +159,27 @@ export class App {
     this.issOrbitLine.setVisible(false);
     this.issOrbitLine.addTo(this.sceneManager.scene);
 
-    // Celestial sphere (stars, sun, moon)
+    // Celestial sphere (stars, sun)
     this.celestialSphere = new CelestialSphere(this.sceneManager.scene, sunLight);
+
+    // Moon (always visible — supports Lock: Moon in all modes)
+    this.moonMesh = new Moon();
+    this.moonMesh.setVisible(true);
+    this.moonMesh.addTo(this.sceneManager.scene);
+
+    // Orion mesh (hidden by default)
+    this.orionMesh = new OrionMesh();
+    this.orionMesh.addTo(this.sceneManager.scene);
+
+    // Orion trajectory orbit line (green, for AROW data)
+    this.orionOrbitLine = new OrbitLine(3000, 0x44ff88, 3);
+    this.orionOrbitLine.setVisible(false);
+    this.orionOrbitLine.addTo(this.sceneManager.scene);
+
+    // Real-time subsystems
+    this.realTimeClock = new RealTimeClock();
+    this.issTracker = new ISSTracker();
+    this.arowClient = new AROWClient();
 
     // Controls
     this.inputManager = new InputManager();
@@ -153,6 +193,7 @@ export class App {
 
     // UI
     this.hud = new HUD();
+    this.artemisHud = new ArtemisHUD();
     this.timeline = new Timeline();
     this.maneuverExecutor = new ManeuverExecutor();
 
@@ -192,8 +233,9 @@ export class App {
     // Setup UI bindings
     this.setupUIBindings();
 
-    // Load default preset
-    this.loadSequence(getPreset('leo-circular')!);
+    // Load default preset — Artemis II for debugging
+    this.loadSequence(getPreset('artemis-ii')!);
+    this.lastPresetName = 'artemis-ii';
   }
 
   private setupUIBindings() {
@@ -218,6 +260,7 @@ export class App {
     const getInclination = () => Number(incInput.value);
 
     const transferPresets = new Set(['hohmann-leo-geo', 'hohmann-leo-meo', 'orbit-raise', 'orbit-lower', 'bielliptic-geo']);
+    const noSliderPresets = new Set(['artemis-ii', 'iss-rendezvous', 'reentry']);
 
     const showCircularSliders = (altKm?: number) => {
       circularDiv.style.display = 'flex';
@@ -256,7 +299,10 @@ export class App {
       if (seq) {
         seq.initialState = applyInclination(seq.initialState, getInclination());
         this.loadSequence(seq);
-        if (transferPresets.has(val)) {
+        if (val === 'artemis-ii') {
+          circularDiv.style.display = 'none';
+          transferDiv.style.display = 'none';
+        } else if (transferPresets.has(val)) {
           const [from, to] = transferDefaults[val];
           showTransferSliders(from, to);
         } else {
@@ -398,7 +444,7 @@ export class App {
     const updateRecenterVisibility = () => this.updateRecenterVisibility();
     cameraTargetSelect.addEventListener('change', () => {
       const previousTarget = this.cameraLockTarget;
-      const nextTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'free';
+      const nextTarget = cameraTargetSelect.value as 'earth' | 'shuttle' | 'orion' | 'moon' | 'free';
       this.cameraLockTarget = nextTarget;
       this.introEarthTransitionQueued = false;
 
@@ -430,6 +476,31 @@ export class App {
         cameraTargetSelect.value = 'free';
         updateRecenterVisibility();
       }
+    });
+
+    // OEM Upload for Artemis telemetry
+    document.getElementById('oem-upload-btn')!.addEventListener('click', () => {
+      document.getElementById('oem-file-input')!.click();
+    });
+    document.getElementById('oem-file-input')!.addEventListener('change', (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const success = this.arowClient.loadFromText(reader.result as string);
+        if (success) {
+          this.artemisHud.setTelemetryStatus('LIVE');
+          // Draw the full trajectory from OEM data
+          const points = this.arowClient.getTrajectoryPoints();
+          if (points.length > 0) {
+            this.orionOrbitLine.updateFromPositions(points);
+            this.orionOrbitLine.setVisible(true);
+          }
+        } else {
+          alert('Failed to parse OEM ephemeris file');
+        }
+      };
+      reader.readAsText(file);
     });
 
     // Export
@@ -489,6 +560,67 @@ export class App {
     this.spacecraftControls.resetOrientation();
     this.maneuverExecutor.loadSequence(seq);
     this.timeline.loadSequence(seq);
+
+    // Artemis II mode detection
+    const isArtemis = seq.name.includes('Artemis II');
+    if (isArtemis && !this.artemisMode) {
+      this.enterArtemisMode();
+    } else if (!isArtemis && this.artemisMode) {
+      this.exitArtemisMode();
+    }
+  }
+
+  private enterArtemisMode() {
+    this.artemisMode = true;
+    this.realTimeMode = true;
+
+    // Set warp to 1x for real-time mode
+    this.timeControls.setWarpLevel(1);
+    this.timeControls.paused = false;
+
+    // Show Artemis-specific scene objects
+    this.orionMesh.setVisible(true);
+    this.spacecraftMesh.group.visible = false;
+
+    // Show Artemis HUD, hide classic HUD
+    this.artemisHud.show();
+    document.getElementById('hud')!.style.display = 'none';
+
+    // Show OEM upload UI
+    document.getElementById('oem-upload-container')!.style.display = 'block';
+
+    // Fetch ISS TLE for real-time ISS position
+    void this.issTracker.fetchTLE();
+
+    // Switch camera to earth for cislunar overview
+    const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement;
+    this.cameraLockTarget = 'earth';
+    if (cameraTargetSelect) cameraTargetSelect.value = 'earth';
+    this.updateRecenterVisibility();
+
+    // Update telemetry status
+    if (this.arowClient.status === 'ready') {
+      this.artemisHud.setTelemetryStatus('LIVE');
+    } else {
+      this.artemisHud.setTelemetryStatus('NO DATA');
+    }
+  }
+
+  private exitArtemisMode() {
+    this.artemisMode = false;
+    this.realTimeMode = false;
+
+    // Hide Artemis-specific scene objects
+    this.orionMesh.setVisible(false);
+    this.orionOrbitLine.setVisible(false);
+    this.spacecraftMesh.group.visible = true;
+
+    // Restore classic HUD
+    this.artemisHud.hide();
+    document.getElementById('hud')!.style.display = 'block';
+
+    // Hide OEM upload UI
+    document.getElementById('oem-upload-container')!.style.display = 'none';
   }
 
   private undock() {
@@ -533,20 +665,35 @@ export class App {
   }
 
   start() {
-    // Intro: begin in shuttle view, then transition to Earth view.
-    this.cameraLockTarget = 'shuttle';
-    const shuttlePose = this.getShuttleCameraPose(this.defaultShuttleCameraDistance);
-    this.sceneManager.camera.position.copy(shuttlePose.position);
-    this.sceneManager.controls.target.copy(shuttlePose.target);
-    this.lastShuttleTarget = shuttlePose.target.clone();
+    // Debug: start locked on Moon with Earth behind camera
+    this.cameraLockTarget = 'moon';
+
+    // Compute initial Moon position so we can place the camera
+    const initMoonECI = getMoonPositionECI(this.realTimeClock.now());
+    this.currentMoonPositionECI = initMoonECI;
+    this.moonMesh.updatePosition(initMoonECI);
+
+    const moonTarget = new THREE.Vector3(
+      initMoonECI[0] * SCALE,
+      initMoonECI[1] * SCALE,
+      initMoonECI[2] * SCALE
+    );
+    // Camera between Earth and Moon (Earth behind camera, looking at Moon)
+    const moonDir = moonTarget.clone().normalize();
+    const camDist = 10; // scene units (~10,000 km from Moon)
+    this.sceneManager.camera.position.copy(moonTarget.clone().addScaledVector(moonDir, -camDist));
+    this.sceneManager.controls.target.copy(moonTarget);
+    this.lastShuttleTarget = moonTarget.clone();
     this.cameraTransition = null;
 
     const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement | null;
-    if (cameraTargetSelect) cameraTargetSelect.value = 'shuttle';
+    if (cameraTargetSelect) cameraTargetSelect.value = 'moon';
     this.updateRecenterVisibility();
+    const presetSelect = document.getElementById('preset-select') as HTMLSelectElement | null;
+    if (presetSelect) presetSelect.value = 'artemis-ii';
 
     this.introStartTime = performance.now() / 1000;
-    this.introEarthTransitionQueued = true;
+    this.introEarthTransitionQueued = false;
 
     this.lastFrameTime = performance.now() / 1000;
     this.loop();
@@ -1000,8 +1147,78 @@ export class App {
       this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
     }
 
-    // Update celestial sphere
-    this.celestialSphere.update(this.simTime, 172);
+    // Always update Moon position (visible in all modes for Lock: Moon)
+    if (this.realTimeMode) {
+      const now = this.realTimeClock.now();
+      const moonECI = getMoonPositionECI(now);
+      this.currentMoonPositionECI = moonECI;
+      this.moonMesh.updatePosition(moonECI);
+
+      // Sun position from astronomy-engine
+      const sunECI = getSunPositionECI(now);
+      this.celestialSphere.updateSunFromECI(sunECI);
+
+      // ISS from TLE propagation
+      if (this.issTracker.isReady()) {
+        const issData = this.issTracker.getPositionECI(now);
+        if (issData) {
+          this.issStateVector = {
+            position: issData.position,
+            velocity: issData.velocity,
+          };
+          this.issMesh.setVisible(true);
+        }
+      }
+
+      // Orion from AROW telemetry
+      if (this.artemisMode && this.arowClient.status === 'ready') {
+        const orionData = this.arowClient.getStateAtTime(now);
+        if (orionData) {
+          this.state.stateVector.position = orionData.position;
+          this.state.stateVector.velocity = orionData.velocity;
+          this.orionMesh.updateFromState({
+            position: orionData.position,
+            velocity: orionData.velocity,
+          });
+        }
+      }
+    } else {
+      // Classic mode: position Moon from simplified ephemeris
+      const daysSinceJ2000 = 172 + this.simTime / 86400;
+      const moonDir = this.celestialSphere.computeMoonPosition(daysSinceJ2000);
+      // Moon distance ~384,400 km = 3.844e8 meters
+      const moonDist = 3.844e8;
+      this.currentMoonPositionECI = [
+        moonDir.x * moonDist,
+        moonDir.y * moonDist,
+        moonDir.z * moonDist,
+      ];
+      this.moonMesh.updatePosition(this.currentMoonPositionECI);
+    }
+
+    // Update Artemis HUD (when in Artemis mode)
+    if (this.artemisMode) {
+      const launchEpoch = this.arowClient.getLaunchEpoch();
+      const met = launchEpoch
+        ? this.realTimeClock.missionElapsedTime(launchEpoch)
+        : 0;
+      const [px, py, pz] = this.state.stateVector.position;
+      const [vx, vy, vz] = this.state.stateVector.velocity;
+      const r = Math.sqrt(px * px + py * py + pz * pz);
+      const alt = r - EARTH_RADIUS;
+      const vel = Math.sqrt(vx * vx + vy * vy + vz * vz);
+
+      const [mx, my, mz] = this.currentMoonPositionECI;
+      const mdx = px - mx, mdy = py - my, mdz = pz - mz;
+      const moonDist = Math.sqrt(mdx * mdx + mdy * mdy + mdz * mdz);
+
+      this.artemisHud.update(met, vel, alt, moonDist);
+    }
+
+    if (!this.realTimeMode) {
+      // Classic mode: update celestial sphere with simplified trig
+      this.celestialSphere.update(this.simTime, 172);
+    }
 
     // Update visuals
     this.spacecraftMesh.updateFromState(this.state);
@@ -1018,20 +1235,27 @@ export class App {
       this.issMesh.updateFromState(this.issStateVector);
     }
 
-    // Update HUD
-    const elements = stateToElements(this.state.stateVector);
-    const zoomDistanceMeters =
-      this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target) / SCALE;
-    this.hud.update(
-      this.state,
-      elements,
-      this.simTime,
-      this.timeControls.warpLevel,
-      this.timeControls.paused,
-      this.issStateVector,
-      zoomDistanceMeters,
-      this.currentVisualScale
-    );
+    // Update Orion mesh in Artemis mode
+    if (this.artemisMode && this.arowClient.status === 'ready') {
+      this.orionMesh.updateFromState(this.state.stateVector);
+    }
+
+    // Update HUD (skip classic HUD in Artemis mode)
+    if (!this.artemisMode) {
+      const elements = stateToElements(this.state.stateVector);
+      const zoomDistanceMeters =
+        this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target) / SCALE;
+      this.hud.update(
+        this.state,
+        elements,
+        this.simTime,
+        this.timeControls.warpLevel,
+        this.timeControls.paused,
+        this.issStateVector,
+        zoomDistanceMeters,
+        this.currentVisualScale
+      );
+    }
 
     // Update timeline
     this.timeline.updatePlayhead(this.simTime);
@@ -1110,6 +1334,40 @@ export class App {
         this.lastShuttleTarget = shuttleTarget.clone();
         this.shuttleCameraDistance = this.sceneManager.camera.position.distanceTo(this.sceneManager.controls.target);
       }
+    } else if (this.cameraLockTarget === 'orion' && this.artemisMode) {
+      // Orion camera lock: follow the Orion position like shuttle lock
+      const orionPos = this.getShuttleTarget(); // Same state vector in Artemis mode
+      if (this.shuttleRefFrameLock) this.exitRefLock();
+      this.sceneManager.camera.up.set(0, 0, -1);
+      if (this.lastShuttleTarget) {
+        const delta = orionPos.clone().sub(this.lastShuttleTarget);
+        this.sceneManager.camera.position.add(delta);
+        this.sceneManager.controls.target.copy(orionPos);
+      } else {
+        const delta = orionPos.clone().sub(this.sceneManager.controls.target);
+        this.sceneManager.camera.position.add(delta);
+        this.sceneManager.controls.target.copy(orionPos);
+      }
+      this.lastShuttleTarget = orionPos.clone();
+    } else if (this.cameraLockTarget === 'moon') {
+      // Moon camera lock: follow the Moon position
+      if (this.shuttleRefFrameLock) this.exitRefLock();
+      this.sceneManager.camera.up.set(0, 0, -1);
+      const moonTarget = new THREE.Vector3(
+        this.currentMoonPositionECI[0] * SCALE,
+        this.currentMoonPositionECI[1] * SCALE,
+        this.currentMoonPositionECI[2] * SCALE
+      );
+      if (this.lastShuttleTarget) {
+        const delta = moonTarget.clone().sub(this.lastShuttleTarget);
+        this.sceneManager.camera.position.add(delta);
+        this.sceneManager.controls.target.copy(moonTarget);
+      } else {
+        const delta = moonTarget.clone().sub(this.sceneManager.controls.target);
+        this.sceneManager.camera.position.add(delta);
+        this.sceneManager.controls.target.copy(moonTarget);
+      }
+      this.lastShuttleTarget = moonTarget.clone();
     } else {
       if (this.shuttleRefFrameLock) this.exitRefLock();
       this.sceneManager.camera.up.set(0, 0, -1);

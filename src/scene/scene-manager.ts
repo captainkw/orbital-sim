@@ -37,7 +37,7 @@ export class SceneManager {
     // Closest zoom: 20 m from camera target.
     // SCALE = 1e-6 => 20 m * SCALE = 0.00002 scene units.
     this.controls.minDistance = 0.00002;
-    this.controls.maxDistance = 500;
+    this.controls.maxDistance = 1000; // Increased for cislunar (Moon at ~384 units)
     this.controls.listenToKeyEvents = undefined as any; // disable keyboard panning
 
     // Mobile: enable pan and 2-finger dolly+pan

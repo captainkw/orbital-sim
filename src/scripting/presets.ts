@@ -316,6 +316,29 @@ export function reentryPreset(): ManeuverSequence {
   };
 }
 
+/**
+ * Artemis II preset — real-time telemetry mode.
+ * Uses a parking orbit as initial state; actual trajectory comes from AROW OEM data.
+ * The sim enters real-time mode when this preset is active.
+ */
+export function artemisIIPreset(): ManeuverSequence {
+  // Initial parking orbit: 185 km circular (SLS insertion orbit)
+  const r = EARTH_RADIUS + 185e3;
+  const v = Math.sqrt(GM_EARTH / r);
+  // Artemis II mission duration: ~10 days
+  const missionDuration = 10 * 24 * 3600;
+  return {
+    version: 1,
+    name: 'Artemis II (Real-Time)',
+    initialState: {
+      position: [r, 0, 0],
+      velocity: [0, 0, -v],
+    },
+    maneuvers: [],
+    totalDuration: missionDuration,
+  };
+}
+
 export function getPreset(name: string): ManeuverSequence | null {
   switch (name) {
     case 'leo-circular':      return leoCircularPreset();
@@ -326,6 +349,7 @@ export function getPreset(name: string): ManeuverSequence | null {
     case 'iss-rendezvous':    return issRendezvousPreset();
     case 'bielliptic-geo':    return biellipticPreset();
     case 'reentry':           return reentryPreset();
+    case 'artemis-ii':        return artemisIIPreset();
     default: return null;
   }
 }
