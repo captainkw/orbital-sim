@@ -233,9 +233,8 @@ export class App {
     // Setup UI bindings
     this.setupUIBindings();
 
-    // Load default preset — Artemis II for debugging
-    this.loadSequence(getPreset('artemis-ii')!);
-    this.lastPresetName = 'artemis-ii';
+    // Load default preset
+    this.loadSequence(getPreset('leo-circular')!);
   }
 
   private setupUIBindings() {
@@ -665,35 +664,20 @@ export class App {
   }
 
   start() {
-    // Debug: start locked on Moon with Earth behind camera
-    this.cameraLockTarget = 'moon';
-
-    // Compute initial Moon position so we can place the camera
-    const initMoonECI = getMoonPositionECI(this.realTimeClock.now());
-    this.currentMoonPositionECI = initMoonECI;
-    this.moonMesh.updatePosition(initMoonECI);
-
-    const moonTarget = new THREE.Vector3(
-      initMoonECI[0] * SCALE,
-      initMoonECI[1] * SCALE,
-      initMoonECI[2] * SCALE
-    );
-    // Camera between Earth and Moon (Earth behind camera, looking at Moon)
-    const moonDir = moonTarget.clone().normalize();
-    const camDist = 10; // scene units (~10,000 km from Moon)
-    this.sceneManager.camera.position.copy(moonTarget.clone().addScaledVector(moonDir, -camDist));
-    this.sceneManager.controls.target.copy(moonTarget);
-    this.lastShuttleTarget = moonTarget.clone();
+    // Intro: begin in shuttle view, then transition to Earth view.
+    this.cameraLockTarget = 'shuttle';
+    const shuttlePose = this.getShuttleCameraPose(this.defaultShuttleCameraDistance);
+    this.sceneManager.camera.position.copy(shuttlePose.position);
+    this.sceneManager.controls.target.copy(shuttlePose.target);
+    this.lastShuttleTarget = shuttlePose.target.clone();
     this.cameraTransition = null;
 
     const cameraTargetSelect = document.getElementById('camera-target') as HTMLSelectElement | null;
-    if (cameraTargetSelect) cameraTargetSelect.value = 'moon';
+    if (cameraTargetSelect) cameraTargetSelect.value = 'shuttle';
     this.updateRecenterVisibility();
-    const presetSelect = document.getElementById('preset-select') as HTMLSelectElement | null;
-    if (presetSelect) presetSelect.value = 'artemis-ii';
 
     this.introStartTime = performance.now() / 1000;
-    this.introEarthTransitionQueued = false;
+    this.introEarthTransitionQueued = true;
 
     this.lastFrameTime = performance.now() / 1000;
     this.loop();
