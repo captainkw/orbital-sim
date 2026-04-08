@@ -42,6 +42,13 @@ import { RealTimeClock } from './realtime/clock';
 import { getSunPositionECI, getMoonPositionECI } from './realtime/celestial-positions';
 import { ISSTracker } from './realtime/iss-tracker';
 import { AROWClient } from './telemetry/arow-client';
+import { MissionClock } from './realtime/mission-clock';
+import {
+  MissionPhase,
+  findLunarFlybyEpoch,
+  getArtemisPhases,
+  getCurrentPhase,
+} from './artemis/mission-phases';
 
 const DOCKING_DIST = 25;     // metres — success threshold (must be < 30m)
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
@@ -97,6 +104,10 @@ export class App {
   private arowClient: AROWClient;
   private realTimeMode = false;
   private artemisMode = false;
+  private artemisSimMode = false;
+  private missionClock: MissionClock | null = null;
+  private missionPhases: MissionPhase[] = [];
+  private flybyEpochMs = 0;
   private currentMoonPositionECI: [number, number, number] = [0, 0, 0];
 
   private state: SpacecraftState;
@@ -488,18 +499,24 @@ export class App {
       reader.onload = () => {
         const success = this.arowClient.loadFromText(reader.result as string);
         if (success) {
-          this.artemisHud.setTelemetryStatus('LIVE');
-          // Draw the full trajectory from OEM data
-          const points = this.arowClient.getTrajectoryPoints();
-          if (points.length > 0) {
-            this.orionOrbitLine.updateFromPositions(points);
-            this.orionOrbitLine.setVisible(true);
-          }
+          this.initArtemisMission();
         } else {
           alert('Failed to parse OEM ephemeris file');
         }
       };
       reader.readAsText(file);
+    });
+
+    // Artemis mode toggle (LIVE / SIM)
+    document.getElementById('btn-artemis-mode-toggle')!.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      this.setArtemisSimMode(!this.artemisSimMode);
+    });
+
+    // Jump to Lunar Flyby
+    document.getElementById('btn-jump-flyby')!.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      this.jumpToFlyby();
     });
 
     // Export
@@ -572,20 +589,24 @@ export class App {
   private enterArtemisMode() {
     this.artemisMode = true;
     this.realTimeMode = true;
+    this.artemisSimMode = false;
 
-    // Set warp to 1x for real-time mode
+    // Default to LIVE mode (warp locked to 1x)
     this.timeControls.setWarpLevel(1);
+    this.timeControls.setArtemisSimMode(false);
     this.timeControls.paused = false;
 
-    // Show Artemis-specific scene objects
+    // Show Artemis-specific scene objects, hide shuttle
     this.orionMesh.setVisible(true);
     this.spacecraftMesh.group.visible = false;
+    this.orbitLine.setVisible(false);
+    this.issOrbitLine.setVisible(false);
 
     // Show Artemis HUD, hide classic HUD
     this.artemisHud.show();
     document.getElementById('hud')!.style.display = 'none';
 
-    // Show OEM upload UI
+    // Keep OEM upload visible as fallback
     document.getElementById('oem-upload-container')!.style.display = 'block';
 
     // Fetch ISS TLE for real-time ISS position
@@ -597,22 +618,129 @@ export class App {
     if (cameraTargetSelect) cameraTargetSelect.value = 'earth';
     this.updateRecenterVisibility();
 
-    // Update telemetry status
-    if (this.arowClient.status === 'ready') {
-      this.artemisHud.setTelemetryStatus('LIVE');
-    } else {
+    // Auto-fetch bundled OEM ephemeris
+    if (this.arowClient.status !== 'ready') {
       this.artemisHud.setTelemetryStatus('NO DATA');
+      void this.loadArtemisEphemeris();
+    } else {
+      this.initArtemisMission();
     }
+  }
+
+  private async loadArtemisEphemeris() {
+    try {
+      const response = await fetch('/data/artemis-ii-oem.txt');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const text = await response.text();
+      const success = this.arowClient.loadFromText(text);
+      if (success) {
+        this.initArtemisMission();
+      }
+    } catch {
+      // Auto-fetch failed; user can still upload manually
+      console.warn('Auto-fetch of Artemis OEM failed; use manual upload');
+    }
+  }
+
+  private initArtemisMission() {
+    this.artemisHud.setTelemetryStatus('LIVE');
+
+    // Draw the full trajectory from OEM data
+    const points = this.arowClient.getTrajectoryPoints();
+    if (points.length > 0) {
+      this.orionOrbitLine.updateFromPositions(points);
+      this.orionOrbitLine.setVisible(true);
+    }
+
+    // Create mission clock from ephemeris bounds
+    const startTime = this.arowClient.getStartTime();
+    const endTime = this.arowClient.getEndTime();
+    if (startTime && endTime) {
+      this.missionClock = new MissionClock(startTime.getTime(), endTime.getTime());
+      this.missionClock.setMode('realtime');
+
+      // Find lunar flyby epoch by scanning ephemeris points
+      const ephemPoints = this.arowClient.getEphemerisPoints();
+      if (ephemPoints.length > 0) {
+        this.flybyEpochMs = findLunarFlybyEpoch(ephemPoints);
+      }
+
+      // Build mission phases and load into timeline
+      this.missionPhases = getArtemisPhases(
+        startTime.getTime(),
+        endTime.getTime(),
+        this.flybyEpochMs,
+      );
+      this.timeline.loadArtemisPhases(
+        this.missionPhases,
+        startTime.getTime(),
+        endTime.getTime(),
+        (timeMs) => this.onTimelineScrub(timeMs),
+      );
+
+      // Update HUD with initial state
+      this.artemisHud.setModeIndicator('realtime', 1);
+    }
+
+    // Hide manual upload since we have data
+    document.getElementById('oem-upload-container')!.style.display = 'none';
+  }
+
+  private onTimelineScrub(timeMs: number) {
+    if (!this.missionClock) return;
+    // Scrubbing auto-switches to SIM mode
+    if (!this.artemisSimMode) {
+      this.setArtemisSimMode(true);
+    }
+    this.missionClock.seekTo(timeMs);
+  }
+
+  private setArtemisSimMode(sim: boolean) {
+    this.artemisSimMode = sim;
+    if (this.missionClock) {
+      this.missionClock.setMode(sim ? 'simulation' : 'realtime');
+    }
+    this.timeControls.setArtemisSimMode(sim);
+    if (!sim) {
+      this.timeControls.setWarpLevel(1);
+    }
+    this.artemisHud.setModeIndicator(
+      sim ? 'simulation' : 'realtime',
+      this.timeControls.warpLevel,
+    );
+  }
+
+  private jumpToFlyby() {
+    if (!this.missionClock || !this.flybyEpochMs) return;
+    // Switch to SIM mode if in LIVE
+    if (!this.artemisSimMode) {
+      this.setArtemisSimMode(true);
+    }
+    // Seek to 30 minutes before closest approach
+    this.missionClock.seekTo(this.flybyEpochMs - 30 * 60 * 1000);
+    // Switch camera to Moon
+    this.cameraLockTarget = 'moon';
+    const sel = document.getElementById('camera-target') as HTMLSelectElement;
+    if (sel) sel.value = 'moon';
+    this.updateRecenterVisibility();
   }
 
   private exitArtemisMode() {
     this.artemisMode = false;
     this.realTimeMode = false;
+    this.artemisSimMode = false;
+    this.missionClock = null;
+    this.missionPhases = [];
 
-    // Hide Artemis-specific scene objects
+    // Restore warp controls
+    this.timeControls.setArtemisSimMode(true); // unlock slider
+    this.timeControls.setWarpLevel(100);
+
+    // Hide Artemis-specific scene objects, restore shuttle
     this.orionMesh.setVisible(false);
     this.orionOrbitLine.setVisible(false);
     this.spacecraftMesh.group.visible = true;
+    this.orbitLine.setVisible(true);
 
     // Restore classic HUD
     this.artemisHud.hide();
@@ -1025,7 +1153,7 @@ export class App {
     const activeMass = this.dockedFlying ? SHUTTLE_MASS + ISS_MASS : SHUTTLE_MASS;
     const thrustAccel = THRUST_FORCE / activeMass;
 
-    if (!this.timeControls.paused && !this.crashed && !this.docked) {
+    if (!this.timeControls.paused && !this.crashed && !this.docked && !this.artemisMode) {
       // Spacecraft keyboard controls (rotation uses frame dt)
       const manualThrust = this.spacecraftControls.update(this.state, frameDt, thrustAccel);
 
@@ -1126,25 +1254,32 @@ export class App {
 
     // Orbit lines: analytical ellipse from current Keplerian elements — runs
     // every frame, costs only trig (no RK4), never flickers.
-    this.orbitLine.updateFromPositions(predictOrbit(this.state.stateVector));
-    if (this.issStateVector) {
-      this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
+    // In Artemis mode the full trajectory is shown via orionOrbitLine; skip the Keplerian ellipse.
+    if (!this.artemisMode) {
+      this.orbitLine.updateFromPositions(predictOrbit(this.state.stateVector));
+      if (this.issStateVector) {
+        this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
+      }
     }
 
     // Always update Moon position (visible in all modes for Lock: Moon)
-    if (this.realTimeMode) {
-      const now = this.realTimeClock.now();
-      const moonECI = getMoonPositionECI(now);
+    if (this.artemisMode && this.missionClock) {
+      // Artemis mode: use virtual mission clock for all positioning
+      this.missionClock.tick(frameDt, this.artemisSimMode ? this.timeControls.warpLevel : 1);
+      this.missionClock.setPaused(this.timeControls.paused);
+      const mNow = this.missionClock.now();
+
+      // Moon and Sun from astronomy-engine at virtual time
+      const moonECI = getMoonPositionECI(mNow);
       this.currentMoonPositionECI = moonECI;
       this.moonMesh.updatePosition(moonECI);
 
-      // Sun position from astronomy-engine
-      const sunECI = getSunPositionECI(now);
+      const sunECI = getSunPositionECI(mNow);
       this.celestialSphere.updateSunFromECI(sunECI);
 
-      // ISS from TLE propagation
-      if (this.issTracker.isReady()) {
-        const issData = this.issTracker.getPositionECI(now);
+      // ISS only in LIVE mode (TLE propagation meaningless at sim warp speeds)
+      if (!this.artemisSimMode && this.issTracker.isReady()) {
+        const issData = this.issTracker.getPositionECI(mNow);
         if (issData) {
           this.issStateVector = {
             position: issData.position,
@@ -1152,11 +1287,13 @@ export class App {
           };
           this.issMesh.setVisible(true);
         }
+      } else if (this.artemisSimMode) {
+        this.issMesh.setVisible(false);
       }
 
-      // Orion from AROW telemetry
-      if (this.artemisMode && this.arowClient.status === 'ready') {
-        const orionData = this.arowClient.getStateAtTime(now);
+      // Orion from ephemeris interpolation at virtual time
+      if (this.arowClient.status === 'ready') {
+        const orionData = this.arowClient.getStateAtTime(mNow);
         if (orionData) {
           this.state.stateVector.position = orionData.position;
           this.state.stateVector.velocity = orionData.velocity;
@@ -1166,26 +1303,24 @@ export class App {
           });
         }
       }
-    } else {
-      // Classic mode: position Moon from simplified ephemeris
-      const daysSinceJ2000 = 172 + this.simTime / 86400;
-      const moonDir = this.celestialSphere.computeMoonPosition(daysSinceJ2000);
-      // Moon distance ~384,400 km = 3.844e8 meters
-      const moonDist = 3.844e8;
-      this.currentMoonPositionECI = [
-        moonDir.x * moonDist,
-        moonDir.y * moonDist,
-        moonDir.z * moonDist,
-      ];
-      this.moonMesh.updatePosition(this.currentMoonPositionECI);
-    }
 
-    // Update Artemis HUD (when in Artemis mode)
-    if (this.artemisMode) {
-      const launchEpoch = this.arowClient.getLaunchEpoch();
-      const met = launchEpoch
-        ? this.realTimeClock.missionElapsedTime(launchEpoch)
-        : 0;
+      // Update timeline progress
+      this.timeline.updateFromProgress(this.missionClock.getProgress());
+
+      // Update phase label
+      const phase = getCurrentPhase(this.missionPhases, this.missionClock.nowMs());
+      if (phase) {
+        this.artemisHud.setPhaseLabel(phase.label);
+      }
+
+      // Update mode indicator
+      this.artemisHud.setModeIndicator(
+        this.artemisSimMode ? 'simulation' : 'realtime',
+        this.timeControls.warpLevel,
+      );
+
+      // Update Artemis HUD telemetry
+      const met = this.missionClock.getMET();
       const [px, py, pz] = this.state.stateVector.position;
       const [vx, vy, vz] = this.state.stateVector.velocity;
       const r = Math.sqrt(px * px + py * py + pz * pz);
@@ -1197,9 +1332,40 @@ export class App {
       const moonDist = Math.sqrt(mdx * mdx + mdy * mdy + mdz * mdz);
 
       this.artemisHud.update(met, vel, alt, moonDist);
+    } else if (this.realTimeMode) {
+      // Non-Artemis real-time mode (future extensibility)
+      const now = this.realTimeClock.now();
+      const moonECI = getMoonPositionECI(now);
+      this.currentMoonPositionECI = moonECI;
+      this.moonMesh.updatePosition(moonECI);
+
+      const sunECI = getSunPositionECI(now);
+      this.celestialSphere.updateSunFromECI(sunECI);
+
+      if (this.issTracker.isReady()) {
+        const issData = this.issTracker.getPositionECI(now);
+        if (issData) {
+          this.issStateVector = {
+            position: issData.position,
+            velocity: issData.velocity,
+          };
+          this.issMesh.setVisible(true);
+        }
+      }
+    } else {
+      // Classic mode: position Moon from simplified ephemeris
+      const daysSinceJ2000 = 172 + this.simTime / 86400;
+      const moonDir = this.celestialSphere.computeMoonPosition(daysSinceJ2000);
+      const moonDistSimple = 3.844e8;
+      this.currentMoonPositionECI = [
+        moonDir.x * moonDistSimple,
+        moonDir.y * moonDistSimple,
+        moonDir.z * moonDistSimple,
+      ];
+      this.moonMesh.updatePosition(this.currentMoonPositionECI);
     }
 
-    if (!this.realTimeMode) {
+    if (!this.realTimeMode && !this.artemisMode) {
       // Classic mode: update celestial sphere with simplified trig
       this.celestialSphere.update(this.simTime, 172);
     }

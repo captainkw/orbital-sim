@@ -82,4 +82,15 @@ export class AROWClient {
   getLaunchEpoch(): Date | null {
     return this.getStartTime();
   }
+
+  /**
+   * Return raw ephemeris points for scanning (e.g., flyby detection).
+   */
+  getEphemerisPoints(): { epoch: number; position: [number, number, number] }[] {
+    if (!this.ephemeris) return [];
+    return this.ephemeris.points.map((p) => ({
+      epoch: p.epoch,
+      position: p.position,
+    }));
+  }
 }

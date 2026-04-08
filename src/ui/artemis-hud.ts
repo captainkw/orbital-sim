@@ -12,6 +12,9 @@ export class ArtemisHUD {
   private altEl: HTMLElement;
   private moonDistEl: HTMLElement;
   private statusEl: HTMLElement;
+  private phaseLabelEl: HTMLElement;
+  private controlsEl: HTMLElement;
+  private modeIndicatorEl: HTMLElement;
   private visible = false;
 
   constructor() {
@@ -21,16 +24,23 @@ export class ArtemisHUD {
     this.altEl = document.getElementById('gauge-alt-value')!;
     this.moonDistEl = document.getElementById('gauge-moon-value')!;
     this.statusEl = document.getElementById('telemetry-status')!;
+    this.phaseLabelEl = document.getElementById('artemis-phase-label')!;
+    this.controlsEl = document.getElementById('artemis-controls')!;
+    this.modeIndicatorEl = document.getElementById('artemis-mode-indicator')!;
   }
 
   show() {
     this.visible = true;
     this.container.style.display = 'flex';
+    this.phaseLabelEl.style.display = 'block';
+    this.controlsEl.style.display = 'flex';
   }
 
   hide() {
     this.visible = false;
     this.container.style.display = 'none';
+    this.phaseLabelEl.style.display = 'none';
+    this.controlsEl.style.display = 'none';
   }
 
   isVisible(): boolean {
@@ -81,5 +91,28 @@ export class ArtemisHUD {
     // Distance to Moon — km
     const moonKm = moonDistanceMeters / 1000;
     this.moonDistEl.textContent = Math.round(moonKm).toLocaleString();
+  }
+
+  setPhaseLabel(label: string) {
+    this.phaseLabelEl.textContent = label;
+  }
+
+  setModeIndicator(mode: 'realtime' | 'simulation', warp: number) {
+    const toggleBtn = document.getElementById('btn-artemis-mode-toggle')!;
+    if (mode === 'realtime') {
+      toggleBtn.textContent = 'LIVE';
+      toggleBtn.classList.remove('sim-mode');
+      this.modeIndicatorEl.textContent = '';
+      this.modeIndicatorEl.classList.remove('sim-mode');
+    } else {
+      toggleBtn.textContent = 'SIM';
+      toggleBtn.classList.add('sim-mode');
+      this.modeIndicatorEl.classList.add('sim-mode');
+      if (warp > 1) {
+        this.modeIndicatorEl.textContent = `${warp}x`;
+      } else {
+        this.modeIndicatorEl.textContent = '1x';
+      }
+    }
   }
 }
