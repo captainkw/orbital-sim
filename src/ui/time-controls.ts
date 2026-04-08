@@ -4,6 +4,7 @@ import { WarpLevel, WARP_LEVELS } from '../types';
 export class TimeControls {
   private warpIndex = Math.max(0, WARP_LEVELS.indexOf(100)); // Default to 100x
   paused = false;
+  private artemisLiveLock = false; // When true, warp is locked to 1x (Artemis LIVE mode)
 
   get warpLevel(): WarpLevel {
     return WARP_LEVELS[this.warpIndex];
@@ -22,8 +23,36 @@ export class TimeControls {
 
     // Slider → warp index
     this.warpSlider.addEventListener('input', () => {
+      if (this.artemisLiveLock) {
+        // Reset slider to 1x in LIVE mode
+        this.warpSlider.value = String(WARP_LEVELS.indexOf(1));
+        return;
+      }
       this.warpIndex = Number(this.warpSlider.value);
     });
+  }
+
+  /** Set warp to a specific level (snaps to nearest available level). */
+  setWarpLevel(level: WarpLevel) {
+    const idx = WARP_LEVELS.indexOf(level);
+    if (idx >= 0) {
+      this.warpIndex = idx;
+    } else {
+      // Find nearest
+      this.warpIndex = 0;
+      for (let i = 0; i < WARP_LEVELS.length; i++) {
+        if (WARP_LEVELS[i] <= level) this.warpIndex = i;
+      }
+    }
+    this.warpSlider.value = String(this.warpIndex);
+  }
+
+  /** Lock warp to 1x (Artemis LIVE mode) or unlock (SIM mode). */
+  setArtemisSimMode(simMode: boolean) {
+    this.artemisLiveLock = !simMode;
+    if (this.artemisLiveLock) {
+      this.setWarpLevel(1);
+    }
   }
 
   update() {
@@ -31,16 +60,22 @@ export class TimeControls {
       this.paused = !this.paused;
     }
 
-    if (this.input.consume('Period')) {
-      if (this.warpIndex < WARP_LEVELS.length - 1) {
-        this.warpIndex++;
+    if (!this.artemisLiveLock) {
+      if (this.input.consume('Period')) {
+        if (this.warpIndex < WARP_LEVELS.length - 1) {
+          this.warpIndex++;
+        }
       }
-    }
 
-    if (this.input.consume('Comma')) {
-      if (this.warpIndex > 0) {
-        this.warpIndex--;
+      if (this.input.consume('Comma')) {
+        if (this.warpIndex > 0) {
+          this.warpIndex--;
+        }
       }
+    } else {
+      // Consume and discard warp keys in LIVE mode
+      this.input.consume('Period');
+      this.input.consume('Comma');
     }
 
     // Sync slider to current index (covers keyboard changes)

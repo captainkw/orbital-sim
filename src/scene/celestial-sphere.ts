@@ -194,12 +194,10 @@ function eclipticToECI(lonRad: number, latRad: number): THREE.Vector3 {
 export class CelestialSphere {
   private starPoints: THREE.Points;
   private sunMesh: THREE.Mesh;
-  private moonMesh: THREE.Mesh;
   private sunLight: THREE.DirectionalLight;
 
   private static readonly STAR_RADIUS = 5000;
   private static readonly SUN_DISTANCE = 3000;
-  private static readonly MOON_DISTANCE = 384.4; // 384,400 km in sim units
 
   constructor(scene: THREE.Scene, sunLight: THREE.DirectionalLight) {
     this.sunLight = sunLight;
@@ -238,15 +236,10 @@ export class CelestialSphere {
     this.sunMesh = new THREE.Mesh(sunGeo, sunMat);
     scene.add(this.sunMesh);
 
-    // --- Moon ---
-    const moonGeo = new THREE.SphereGeometry(1.737, 16, 16); // Moon radius ~1737km = 1.737 units
-    const moonMat = new THREE.MeshBasicMaterial({ color: 0xaaaaaa });
-    this.moonMesh = new THREE.Mesh(moonGeo, moonMat);
-    scene.add(this.moonMesh);
   }
 
   /**
-   * Update sun and moon positions based on simulation time.
+   * Update sun position based on simulation time.
    * @param simTime Seconds since simulation start
    * @param epochJ2000Days Days since J2000 at simulation start (default 0 = J2000 epoch)
    */
@@ -258,9 +251,18 @@ export class CelestialSphere {
     this.sunMesh.position.copy(sunPos.clone().multiplyScalar(CelestialSphere.SUN_DISTANCE));
     this.sunLight.position.copy(sunPos.clone().multiplyScalar(100));
 
-    // --- Moon position (simplified) ---
-    const moonPos = this.computeMoonPosition(daysSinceJ2000);
-    this.moonMesh.position.copy(moonPos.clone().multiplyScalar(CelestialSphere.MOON_DISTANCE));
+  }
+
+  /**
+   * Update sun position from a real-time ECI position (meters).
+   * Used in real-time mode when astronomy-engine provides accurate positions.
+   */
+  updateSunFromECI(positionMeters: [number, number, number]) {
+    const dir = new THREE.Vector3(
+      positionMeters[0], positionMeters[1], positionMeters[2]
+    ).normalize();
+    this.sunMesh.position.copy(dir.clone().multiplyScalar(CelestialSphere.SUN_DISTANCE));
+    this.sunLight.position.copy(dir.clone().multiplyScalar(100));
   }
 
   private computeSunPosition(d: number): THREE.Vector3 {
@@ -274,7 +276,7 @@ export class CelestialSphere {
     return eclipticToECI(lambda, 0);
   }
 
-  private computeMoonPosition(d: number): THREE.Vector3 {
+  computeMoonPosition(d: number): THREE.Vector3 {
     // Simplified lunar position
     // Mean longitude (degrees)
     const L = (218.316 + 13.176396 * d) % 360;

@@ -35,6 +35,21 @@ export interface SpacecraftState {
   thrustDirection: [number, number, number]; // ECI thrust vector (m/s^2)
 }
 
+export interface EphemerisPoint {
+  epoch: number;        // Unix timestamp in milliseconds
+  position: [number, number, number];  // meters, ECI Y-up
+  velocity: [number, number, number];  // m/s, ECI Y-up
+}
+
+export interface OEMEphemeris {
+  objectName: string;
+  centerName: string;
+  refFrame: string;
+  startTime: number;    // Unix ms
+  stopTime: number;     // Unix ms
+  points: EphemerisPoint[];
+}
+
 export type WarpLevel = number;
 
 export const WARP_LEVELS: WarpLevel[] = [
