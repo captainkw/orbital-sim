@@ -1,8 +1,17 @@
 import { gravitationalAcceleration } from './gravity';
-import { dragAcceleration } from './atmosphere';
+import { dragAcceleration, type DragOptions } from './atmosphere';
+import {
+  perturbationAcceleration,
+  type PerturbationOptions,
+} from './perturbations';
 
 // State: [x, y, z, vx, vy, vz]
 type State6 = [number, number, number, number, number, number];
+
+export interface IntegratorOptions {
+  drag?: DragOptions;
+  perturbations?: PerturbationOptions;
+}
 
 /**
  * Derivative function: returns [vx, vy, vz, ax, ay, az]
@@ -10,18 +19,23 @@ type State6 = [number, number, number, number, number, number];
  */
 function derivative(
   state: State6,
-  thrust: [number, number, number]
+  thrust: [number, number, number],
+  options: IntegratorOptions = {}
 ): State6 {
   const [x, y, z, vx, vy, vz] = state;
   const [gx, gy, gz] = gravitationalAcceleration(x, y, z);
-  const [dx, dy, dz] = dragAcceleration(x, y, z, vx, vy, vz);
+  const [dx, dy, dz] = dragAcceleration(x, y, z, vx, vy, vz, options.drag);
+  const [px, py, pz] = perturbationAcceleration(
+    [x, y, z],
+    options.perturbations
+  );
   return [
     vx,
     vy,
     vz,
-    gx + dx + thrust[0],
-    gy + dy + thrust[1],
-    gz + dz + thrust[2],
+    gx + dx + px + thrust[0],
+    gy + dy + py + thrust[1],
+    gz + dz + pz + thrust[2],
   ];
 }
 
@@ -46,12 +60,13 @@ function addScaled(a: State6, b: State6, s: number): State6 {
 export function rk4Step(
   state: State6,
   dt: number,
-  thrust: [number, number, number] = [0, 0, 0]
+  thrust: [number, number, number] = [0, 0, 0],
+  options: IntegratorOptions = {}
 ): State6 {
-  const k1 = derivative(state, thrust);
-  const k2 = derivative(addScaled(state, k1, dt / 2), thrust);
-  const k3 = derivative(addScaled(state, k2, dt / 2), thrust);
-  const k4 = derivative(addScaled(state, k3, dt), thrust);
+  const k1 = derivative(state, thrust, options);
+  const k2 = derivative(addScaled(state, k1, dt / 2), thrust, options);
+  const k3 = derivative(addScaled(state, k2, dt / 2), thrust, options);
+  const k4 = derivative(addScaled(state, k3, dt), thrust, options);
 
   return [
     state[0] + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),

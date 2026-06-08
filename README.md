@@ -161,6 +161,43 @@ The altitude/preset controls move to the top-right corner on mobile, and the Imp
 
 ## Physics
 
+### Propagation Modes
+
+The simulator now separates two different jobs:
+
+- **Interactive maneuver simulation** uses the existing RK4 numerical
+  integrator. This is the right mode for manual thrust, Hohmann transfers,
+  rendezvous practice, and "what if I burn here?" exploration.
+- **Public catalog satellite tracking** uses SGP4 through
+  [`satellite.js`](https://github.com/shashwatak/satellite-js). This is the
+  right mode for real satellites distributed as TLE or OMM/GP catalog data
+  from sources such as CelesTrak or Space-Track.
+
+SGP4 is the model that TLE and OMM mean elements are built for. It handles the
+catalog mean elements, Earth oblateness terms, and BSTAR drag behavior inside
+the standard public-catalog propagation model. The helper in
+`src/physics/sgp4.ts` accepts either TLE lines or OMM JSON, propagates with
+SGP4, returns TEME position/velocity in meters, and also returns ECEF/geodetic
+coordinates using GMST-based frame conversion.
+
+```ts
+import {
+  propagateCatalogSatellite,
+  satelliteFromTle,
+} from './src/physics/sgp4';
+
+const iss = satelliteFromTle({
+  name: 'ISS (ZARYA)',
+  line1:
+    '1 25544U 98067A   24150.51848450  .00016717  00000+0  30419-3 0  9998',
+  line2:
+    '2 25544  51.6395  75.5196 0005277  50.5156  64.7783 15.49473516456255',
+});
+
+const current = propagateCatalogSatellite(iss, new Date());
+console.log(current.temePosition, current.ecefPosition, current.altitudeMeters);
+```
+
 ### Gravity
 
 The simulator uses Newtonian point-mass gravity:
@@ -189,9 +226,32 @@ F_drag = 0.5 * rho * Cd * A * v^2
 
 Density falls off exponentially with altitude: `rho = rho_0 * exp(-h / H)`. The drag force always opposes the velocity vector. At typical LEO altitudes (200--400 km), drag is small but nonzero -- over many orbits it causes gradual orbital decay. Below 70 km, drag becomes catastrophic and triggers the crash screen.
 
+The RK4 drag model is configurable by mass, area, and drag coefficient for
+sandbox use. For real public-catalog satellites, use SGP4 instead of manually
+applying BSTAR; BSTAR is part of the SGP4 catalog model and is consumed by
+`satellite.js` when constructing the satellite record.
+
+### Perturbations
+
+The RK4 integrator can opt into higher-fidelity perturbation accelerations:
+
+- **J2 Earth oblateness** (`includeJ2`) for first-order geopotential effects.
+- **Solar radiation pressure** (`includeSolarRadiationPressure`) with
+  configurable spacecraft area, mass, and reflectivity.
+- **Third-body gravity** (`includeThirdBody`) from the Sun and Moon defaults,
+  or caller-supplied third-body positions and gravitational parameters.
+
+These terms are useful for educational numerical experiments. They are not a
+replacement for orbit determination or the public catalog model. For real
+catalog objects, prefer SGP4/TLE or SGP4/OMM.
+
 ### Integrator
 
-All physics are advanced with a **4th-order Runge-Kutta (RK4)** integrator at a fixed 1-second timestep. At each step, gravity, drag, and any active thrust are summed into a net acceleration and propagated through the standard k1--k4 stages. The fixed timestep ensures deterministic, reproducible results regardless of frame rate.
+All interactive-simulation physics are advanced with a **4th-order
+Runge-Kutta (RK4)** integrator at a fixed 1-second timestep. At each step,
+gravity, drag, optional perturbations, and any active thrust are summed into a
+net acceleration and propagated through the standard k1--k4 stages. The fixed
+timestep ensures deterministic, reproducible results regardless of frame rate.
 
 At high warp levels, the engine runs up to 10,000 physics steps per frame to keep up with the accelerated clock.
 
