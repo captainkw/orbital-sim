@@ -13,7 +13,10 @@
       "Bash(npm create:*)",
       "Bash(npm init:*)",
       "Bash(npm install:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx vitest:*)"
     ]
   }
 }

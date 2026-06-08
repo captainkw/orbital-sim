@@ -33,6 +33,8 @@ import { DockingOverlay } from './ui/docking-overlay';
 import { ManeuverExecutor } from './scripting/maneuver-executor';
 import { getPreset, buildHohmannPreset } from './scripting/presets';
 import { validateSequence, serializeSequence } from './scripting/maneuver-schema';
+import { SatelliteMesh } from './scene/satellite';
+import { SatelliteEditor, SatelliteEntry } from './ui/satellite-editor';
 
 const DOCKING_DIST = 25;     // metres — success threshold (must be < 30m)
 const DOCKING_REL_VEL = 2.0; // m/s   — max approach speed at docking
@@ -61,6 +63,17 @@ const MODEL_VISUAL_RADIAL_LIFT = 0.09;
 const REF_LOCK_ENTER_DIST = 25_000 * SCALE;        // 25 km
 const REF_LOCK_EXIT_DIST = 30_000 * SCALE;         // hysteresis to avoid flicker
 
+const SAT_ORBIT_COLORS = [0x44ff44, 0xff44ff, 0x44ffff, 0xffff44, 0xff8844, 0x8844ff];
+const ISS_DEFAULT_ALT = 408e3; // metres
+
+interface TrackedSatellite {
+  id: number;
+  name: string;
+  stateVector: StateVector;
+  mesh: SatelliteMesh;
+  orbitLine: OrbitLine;
+}
+
 export class App {
   private sceneManager: SceneManager;
   private earth: Earth;
@@ -77,6 +90,8 @@ export class App {
   private maneuverExecutor: ManeuverExecutor;
   private crashOverlay: CrashOverlay;
   private dockingOverlay: DockingOverlay;
+  private satelliteEditor: SatelliteEditor;
+  private satellites: TrackedSatellite[] = [];
 
   private state: SpacecraftState;
   private issStateVector: StateVector | null = null;
@@ -127,16 +142,29 @@ export class App {
 
     this.spacecraftMesh = new SpacecraftMesh();
     this.spacecraftMesh.addTo(this.sceneManager.scene);
+    this.spacecraftMesh.group.visible = false;
 
     this.orbitLine = new OrbitLine(1200, 0x00aaff, 2);  // shuttle: higher renderOrder
     this.orbitLine.addTo(this.sceneManager.scene);
+    this.orbitLine.setVisible(false);
 
     this.issMesh = new ISSTarget();
     this.issMesh.addTo(this.sceneManager.scene);
 
     this.issOrbitLine = new OrbitLine(1200, 0xffaa00, 1); // ISS: lower renderOrder → always underneath
-    this.issOrbitLine.setVisible(false);
     this.issOrbitLine.addTo(this.sceneManager.scene);
+
+    // Always show ISS at its real ~408 km orbit
+    {
+      const rIss = EARTH_RADIUS + ISS_DEFAULT_ALT;
+      const vIss = Math.sqrt(GM_EARTH / rIss);
+      this.issStateVector = {
+        position: [rIss, 0, 0],
+        velocity: [0, 0, -vIss],
+      };
+      this.issMesh.setVisible(true);
+      this.issOrbitLine.setVisible(true);
+    }
 
     // Celestial sphere (stars, sun, moon)
     this.celestialSphere = new CelestialSphere(this.sceneManager.scene, sunLight);
@@ -176,6 +204,11 @@ export class App {
       this.undock();
     });
 
+    // Satellite editor
+    this.satelliteEditor = new SatelliteEditor();
+    this.satelliteEditor.setAddCallback((entry) => this.addSatellite(entry));
+    this.satelliteEditor.setRemoveCallback((id) => this.removeSatellite(id));
+
     // Initial spacecraft state: 600km LEO, equatorial, circular
     const r = EARTH_RADIUS + 600e3;
     const vCircular = Math.sqrt(GM_EARTH / r);
@@ -188,6 +221,29 @@ export class App {
       thrustActive: false,
       thrustDirection: [0, 0, 0],
     };
+
+    // Listen for telemetry updates from a parent iframe host.
+    window.addEventListener('message', (event: MessageEvent) => {
+      const data = event.data;
+      if (!data?.type) return;
+
+      if (data.type === 'telemetry') {
+        // ISS position: { type: 'telemetry', latitude, longitude }
+        const sv = this.latLonToStateVector(Number(data.latitude), Number(data.longitude), ISS_DEFAULT_ALT);
+        if (this.issStateVector) {
+          this.issStateVector.position = sv.position;
+          this.issStateVector.velocity = sv.velocity;
+        }
+      } else if (data.type === 'satellite-position') {
+        // Per-satellite position: { type: 'satellite-position', name, latitude, longitude }
+        const sat = this.satellites.find(s => s.name === data.name);
+        if (sat) {
+          const sv = this.latLonToStateVector(Number(data.latitude), Number(data.longitude), ISS_DEFAULT_ALT);
+          sat.stateVector.position = sv.position;
+          sat.stateVector.velocity = sv.velocity;
+        }
+      }
+    });
 
     // Setup UI bindings
     this.setupUIBindings();
@@ -469,22 +525,22 @@ export class App {
     this.dockingOverlay.hide();
     this.dockingOverlay.hideUndockButton();
 
-    // ISS state — present only for rendezvous preset
+    // ISS state — use preset's state if provided, otherwise keep current orbit
     if (seq.issInitialState) {
       this.issStateVector = {
         position: [...seq.issInitialState.position] as [number, number, number],
         velocity: [...seq.issInitialState.velocity] as [number, number, number],
       };
-      this.issMesh.setVisible(true);
-      // Compute and draw ISS orbit line once on load
-      const issOrbitPoints = predictOrbit(this.issStateVector);
-      this.issOrbitLine.updateFromPositions(issOrbitPoints);
-      this.issOrbitLine.setVisible(true);
-    } else {
-      this.issStateVector = null;
-      this.issMesh.setVisible(false);
-      this.issOrbitLine.setVisible(false);
+    } else if (!this.issStateVector) {
+      const rIss = EARTH_RADIUS + ISS_DEFAULT_ALT;
+      const vIss = Math.sqrt(GM_EARTH / rIss);
+      this.issStateVector = {
+        position: [rIss, 0, 0],
+        velocity: [0, 0, -vIss],
+      };
     }
+    this.issMesh.setVisible(true);
+    this.issOrbitLine.setVisible(true);
 
     this.spacecraftControls.resetOrientation();
     this.maneuverExecutor.loadSequence(seq);
@@ -530,6 +586,57 @@ export class App {
     this.dockingOverlay.hideUndockButton();
     // ISS inherits the current combined velocity — it continues on its own orbit.
     // Shuttle keeps the same position/velocity; they naturally separate over time.
+  }
+
+  private addSatellite(entry: SatelliteEntry) {
+    const colorIndex = this.satellites.length % SAT_ORBIT_COLORS.length;
+    const color = SAT_ORBIT_COLORS[colorIndex];
+
+    const mesh = new SatelliteMesh(color);
+    mesh.addTo(this.sceneManager.scene);
+
+    const orbitLine = new OrbitLine(1200, color, 0);
+    orbitLine.addTo(this.sceneManager.scene);
+
+    // Default position at 0°,0° — will be overwritten by telemetry
+    const defaultSv = this.latLonToStateVector(0, 0, ISS_DEFAULT_ALT);
+
+    const sat: TrackedSatellite = {
+      id: entry.id,
+      name: entry.name,
+      stateVector: defaultSv,
+      mesh,
+      orbitLine,
+    };
+    this.satellites.push(sat);
+
+    // Notify parent so it starts polling telemetry for this satellite
+    window.parent.postMessage({ type: 'satellite-added', name: entry.name }, '*');
+  }
+
+  private removeSatellite(id: number) {
+    const idx = this.satellites.findIndex(s => s.id === id);
+    if (idx === -1) return;
+    const sat = this.satellites[idx];
+    sat.mesh.removeFrom(this.sceneManager.scene);
+    sat.orbitLine.removeFrom(this.sceneManager.scene);
+    window.parent.postMessage({ type: 'satellite-removed', name: sat.name }, '*');
+    this.satellites.splice(idx, 1);
+  }
+
+  private latLonToStateVector(latDeg: number, lonDeg: number, altMetres: number): StateVector {
+    const latRad = (latDeg || 0) * Math.PI / 180;
+    const lonRad = (lonDeg || 0) * Math.PI / 180;
+    const r = EARTH_RADIUS + altMetres;
+    const vCirc = Math.sqrt(GM_EARTH / r);
+    const cosLat = Math.cos(latRad);
+    const sinLat = Math.sin(latRad);
+    const cosLon = Math.cos(lonRad);
+    const sinLon = Math.sin(lonRad);
+    return {
+      position: [r * cosLat * cosLon, r * sinLat, -r * cosLat * sinLon],
+      velocity: [-vCirc * sinLon, 0, -vCirc * cosLon],
+    };
   }
 
   start() {
@@ -700,6 +807,9 @@ export class App {
     this.spacecraftMesh.setVisualScale(visualScale);
     if (this.issStateVector) {
       this.issMesh.setVisualScale(visualScale);
+    }
+    for (const sat of this.satellites) {
+      sat.mesh.setVisualScale(visualScale);
     }
   }
 
@@ -926,23 +1036,10 @@ export class App {
         s.position = [newState[0], newState[1], newState[2]];
         s.velocity = [newState[3], newState[4], newState[5]];
 
-        if (this.issStateVector) {
-          if (this.dockedFlying) {
-            // Docked: ISS rigidly follows the shuttle's physics position/velocity.
-            this.issStateVector.position = [...s.position] as [number, number, number];
-            this.issStateVector.velocity = [...s.velocity] as [number, number, number];
-          } else {
-            // Undocked: ISS propagates independently (pure Keplerian, no thrust).
-            const iv = this.issStateVector;
-            const newISS = rk4Step(
-              [iv.position[0], iv.position[1], iv.position[2],
-               iv.velocity[0], iv.velocity[1], iv.velocity[2]],
-              PHYSICS_DT
-            );
-            iv.position = [newISS[0], newISS[1], newISS[2]];
-            iv.velocity = [newISS[3], newISS[4], newISS[5]];
-          }
-        }
+        // ISS position is driven entirely by external telemetry (postMessage),
+        // not by the physics engine. No RK4 propagation for the ISS.
+
+        // Satellite positions are driven by external telemetry — no RK4 propagation.
 
         this.simTime += PHYSICS_DT;
         this.accumulator -= PHYSICS_DT;
@@ -999,6 +1096,9 @@ export class App {
     if (this.issStateVector) {
       this.issOrbitLine.updateFromPositions(predictOrbit(this.issStateVector));
     }
+    for (const sat of this.satellites) {
+      sat.orbitLine.updateFromPositions(predictOrbit(sat.stateVector));
+    }
 
     // Update celestial sphere
     this.celestialSphere.update(this.simTime, 172);
@@ -1016,6 +1116,9 @@ export class App {
 
     if (this.issStateVector) {
       this.issMesh.updateFromState(this.issStateVector);
+    }
+    for (const sat of this.satellites) {
+      sat.mesh.updateFromState(sat.stateVector);
     }
 
     // Update HUD
