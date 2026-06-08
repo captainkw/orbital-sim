@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "satellite.js": "7.0.1",
     "three": "^0.182.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"

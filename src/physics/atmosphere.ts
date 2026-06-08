@@ -5,7 +5,13 @@ const SEA_LEVEL_DENSITY = 1.225; // kg/m^3
 const SCALE_HEIGHT = 8500; // meters
 const ATMOSPHERE_CEILING = 600e3; // meters altitude — skip drag above this
 
-// Spacecraft constants
+export interface DragOptions {
+  dragCoefficient?: number;
+  crossSectionAreaM2?: number;
+  massKg?: number;
+}
+
+// Default spacecraft constants
 const DRAG_COEFFICIENT = 2.2;
 const CROSS_SECTION_AREA = 10; // m^2
 const SPACECRAFT_MASS = 1000; // kg
@@ -27,7 +33,8 @@ function atmosphericDensity(altitude: number): number {
  */
 export function dragAcceleration(
   x: number, y: number, z: number,
-  vx: number, vy: number, vz: number
+  vx: number, vy: number, vz: number,
+  options: DragOptions = {}
 ): [number, number, number] {
   const r = Math.sqrt(x * x + y * y + z * z);
   const altitude = r - EARTH_RADIUS;
@@ -38,8 +45,13 @@ export function dragAcceleration(
   const speed = Math.sqrt(vx * vx + vy * vy + vz * vz);
   if (speed < 1e-6) return [0, 0, 0];
 
+  const dragCoefficient = options.dragCoefficient ?? DRAG_COEFFICIENT;
+  const crossSectionArea = options.crossSectionAreaM2 ?? CROSS_SECTION_AREA;
+  const mass = options.massKg ?? SPACECRAFT_MASS;
+
   // Drag magnitude: 0.5 * rho * Cd * A * v^2 / mass
-  const dragMag = 0.5 * rho * DRAG_COEFFICIENT * CROSS_SECTION_AREA * speed * speed / SPACECRAFT_MASS;
+  const dragMag =
+    (0.5 * rho * dragCoefficient * crossSectionArea * speed * speed) / mass;
 
   // Drag opposes velocity
   return [
