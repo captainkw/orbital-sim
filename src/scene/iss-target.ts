@@ -65,17 +65,6 @@ export class ISSTarget {
       }
     );
 
-    // Docking-target indicator ring (amber, always visible when ISS is shown)
-    const ringGeo = new THREE.RingGeometry(1.8, 2.3, 48);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffaa00,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.45,
-      depthTest: false,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    this.group.add(ring);
   }
 
   /**

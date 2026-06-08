@@ -49,4 +49,8 @@ export class OrbitLine {
   addTo(scene: THREE.Scene) {
     scene.add(this.line);
   }
+
+  removeFrom(scene: THREE.Scene) {
+    scene.remove(this.line);
+  }
 }
